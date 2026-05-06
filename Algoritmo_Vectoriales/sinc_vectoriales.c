@@ -67,7 +67,7 @@ int main()
             printf("\n[PADRE] Ordenando a la computadora C%02d (Puerto %d) que actúe...\n", (indice_elegido + 1) * 5, puerto_elegido);
                    
             enviar_msj(puerto_elegido, inyeccion);
-            usleep(150000); // Ritmo al que se inyecta los eventos de envio o internos
+            usleep(100000); // Ritmo al que se inyecta los eventos de envio o internos
         }
 
         printf("\n[PADRE] Simulación terminada. Esperando a que la red se estabilice...\n");

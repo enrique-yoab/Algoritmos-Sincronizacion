@@ -6,6 +6,7 @@
 #define CMD_EX "EXIT"  // Comando de apagado global
 #define CMD_EN "ENVIAR" // Comando de inyección (Evento de Envio)
 #define CMD_IN "LOCAL"  // Comando de inyeccion (Evento interno)
+#define DIRECTION "127.0.0.1" // Direccion ip a la que se comunica
 
 // ------- Estructura del mensaje de vectores (Relojes Vectoriales) ------------
 // A diferencia de Lamport (escalar), aquí llevamos el registro de la causalidad de TODOS los procesos de la red.

@@ -29,7 +29,7 @@ void enviar_msj(int puerto_destino, Mensaje_L datos) {
 
     serv_addr.sin_port = htons(puerto_destino);
     serv_addr.sin_family = AF_INET;
-    inet_pton(AF_INET, "127.0.0.1", &serv_addr.sin_addr);
+    inet_pton(AF_INET, DIRECTION, &serv_addr.sin_addr);
 
     // Tratamos de conectarnos si no puede nos salimos del programa
     if (connect(sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
@@ -88,12 +88,35 @@ void *hilo_escucha(void *arg)
         // Leemos del socket el bloque de bytes que forma el Mensaje_L completo
         read(new_socket, &externo, sizeof(Mensaje_L));
 
-        // REGLA DE LAMPORT AL RECIBIR 
-        // Si el emisor es el proceso padre (id == 99), es un comando de control,
-        // no un evento de la red P2P real, por lo que NO se actualiza el reloj.
-        // Si es un nodo real, aplicamos: reloj_local = max(reloj_local, reloj_externo) + 1
-        // El +1 representa el evento de recepción del mensaje.
-        local.reloj = (externo.id_proceso == 99) ? local.reloj : mayor(local.reloj, externo.reloj) + 1;
+        // Verificamos el tipo de petición recibida para actuar en consecuencia
+        if(externo.id_proceso == 99)
+        {
+            if (strcmp(externo.peticion, CMD_EX) == 0)
+            {
+                // Comando de apagado: se baja la bandera para que ambos hilos terminen
+                printf("\n[C%02d] Apagando por comando remoto...\n", local.id_proceso);
+                encendido = 0;   // El hilo cliente y este hilo servidor saldrán de sus bucles
+            }
+            else if (strcmp(externo.peticion, CMD_EN) == 0)
+            {
+                // Comando de envío: activa la bandera para que el hilo cliente envíe un mensaje
+                enviar = 1; // El hilo cliente detectará esto en su próxima iteración
+            }
+            else if (strcmp(externo.peticion, CMD_IN) == 0)
+            {
+                printf("\n[C%02d] -> EVENTO INTERNO <- Ejecutando tarea local...\n", local.id_proceso);
+                local.reloj++;
+            }
+        }
+        else
+        {
+            // REGLA DE LAMPORT AL RECIBIR 
+            // Si el emisor es el proceso padre (id == 99), es un comando de control,
+            // no un evento de la red P2P real, por lo que NO se actualiza el reloj.
+            // Si es un nodo real, aplicamos: reloj_local = max(reloj_local, reloj_externo) + 1
+            // El +1 representa el evento de recepción del mensaje.
+            local.reloj = mayor(local.reloj, externo.reloj) + 1;           
+        }
 
         // Imprimimos el detalle del mensaje recibido y el estado del reloj
         printf("\nInicio -> Mensaje Computadora [C%02d] <-\n", local.id_proceso);
@@ -102,19 +125,6 @@ void *hilo_escucha(void *arg)
         printf("--- Reloj Externo (Ts): %d\n",      externo.reloj);       // Reloj del emisor
         printf("--- Reloj Local Actualizado: %d\n", local.reloj);         // Reloj local tras el merge
         printf("Fin -> Mensaje Computadora [C%02d] <-\n", local.id_proceso);
-
-        // Verificamos el tipo de petición recibida para actuar en consecuencia
-        if (strcmp(externo.peticion, CMD_EX) == 0)
-        {
-            // Comando de apagado: se baja la bandera para que ambos hilos terminen
-            printf("\n[C%02d] Apagando por comando remoto...\n", local.id_proceso);
-            encendido = 0;   // El hilo cliente y este hilo servidor saldrán de sus bucles
-        }
-        else if (strcmp(externo.peticion, CMD_EN) == 0)
-        {
-            // Comando de envío: activa la bandera para que el hilo cliente envíe un mensaje
-            enviar = 1; // El hilo cliente detectará esto en su próxima iteración
-        }
 
         // Cerramos el socket de esta conexión específica; el servidor queda listo
         // para aceptar la siguiente conexión en la próxima iteración del while

@@ -74,9 +74,10 @@ int main()
             // No tenemos un reloj ya que es "voluntariamente" la accion de enviar un mensaje
             inyeccion.reloj = 0; // EL PROCESO PADRE NO ALTERA EL TIEMPO
             // La escribimos en el buffer de peticion el comando de enviar
-            strcpy(inyeccion.peticion, CMD_EN); 
+            if(rand() % 2 == 1) strcpy(inyeccion.peticion, CMD_EN);
+            else strcpy(inyeccion.peticion, CMD_IN); 
             // Imprime la computadora a la que le ordenara realizar la accion y el puerto
-            printf("\n[PADRE] Ordenando a la computadora %02d con el puerto %d que mande un mensaje...\n", (indice_elegido + 1) * 5, puerto_elegido);
+            printf("\n[PADRE] Ordenando a la computadora %02d con el puerto %d a realizar un evento...\n", (indice_elegido + 1) * 5, puerto_elegido);
             // Enviamos el mensaje al puerto construido
             enviar_msj(puerto_elegido, inyeccion);
             // Se duerme el evento 0.1 s para que alcance a hacer el envio a la otra computadora
