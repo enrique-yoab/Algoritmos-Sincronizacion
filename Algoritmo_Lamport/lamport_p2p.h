@@ -2,8 +2,10 @@
 #define LAMPORT_P2P_H
 
 #define NUM_NODOS 3    // Numero de computadoras a crear
+#define NUM_EVENT0 7   // Numero de eventos totales
 #define CMD_EX "EXIT"  // Comando de apagado
 #define CMD_EN "ENVIAR" // Comando para que la computadora mande un mensaje
+#define DIRECTION "127.0.0.1" // Direccion ip a la que se comunica
 
 // ------- Estructura del mensaje de Lamport ------------
 typedef struct {
