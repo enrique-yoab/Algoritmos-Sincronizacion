@@ -10,8 +10,9 @@
 
 // Variables globales para definir el limite en la respuesta
 // Y para el retardo maximo del servidor a la hora de enviar respuestas.
-#define RTT_MAX_MS  500         // 500 ms como límite razonable en loopback
-#define DELAY_SERV  300000      // Retardo máximo del servidor en µs (300 ms < RTT_MAX_MS)
+#define RTT_MAX_MS  600         // 500 ms como límite razonable en loopback
+#define DELAY_SERV  300000      // Retardo máximo del servidor en µs
+#define DELAY_CLI   250000      // Retardo máximo del cliente en µs
 
 // Esta funcion imprime una estructura tiempo con formato H:M:S:ms
 void mostrar_hora(tiempo *t)
@@ -21,6 +22,21 @@ void mostrar_hora(tiempo *t)
            t->minutos,
            t->segundos,
            t->milisegundos);
+}
+
+// Convertir estructura tiempo a milisegundos como un entero de 64 bits
+long long convertion_ms(tiempo *t)
+{
+    // Usamos long long para numeros de 64 bits y poder tener mejor aproximacion
+    // Realizamos la conversion de horas, minutos y segundos a milisegundos
+    // 1 hora = 3600 segundos * 1000 ms = 3,600,000 ms
+    // 1 minuto = 60 segundos * 1000 ms = 60,000 ms
+    // 1 segundo = 1,000 ms
+    long long t_ms = (long long)t->horas * 3600000LL +
+                     (long long)t->minutos * 60000LL +
+                     (long long)t->segundos * 1000LL +
+                     t->milisegundos;
+    return t_ms;
 }
 
 // Lee el reloj del sistema en tiempo real y llena la estructura tiempo
@@ -38,9 +54,8 @@ void capturar_tiempo(tiempo *t)
     t->horas        = tm_info->tm_hour;     // horas    (0-23)
 }
 
-// ─────────────────────────────────────────────────────────────
-// SERVIDOR — "El Gestor del Tiempo"
-// ─────────────────────────────────────────────────────────────
+// El servidor se encarga de recibir el mensaje del cliente lo procesa y le regresa
+// su respuesta con su estampa de tiempo al momento de recibir la solicitud
 void ejecutar_servidor_C()
 {
     int desc_socket;                 // descriptor del socket UDP del servidor
@@ -61,55 +76,47 @@ void ejecutar_servidor_C()
     // Se asocia el socket a la direccion "escucha por el puerto"
     bind(desc_socket, (struct sockaddr *)&direct, sizeof(direct)); 
 
-    while (1)                                        // bucle infinito hasta recibir EXIT
+    while (1) // bucle infinito hasta recibir EXIT
     {
-        tam_cliente = sizeof(cliente);               // resetea el tamaño antes de cada recvfrom
-        memset(&msj, 0, sizeof(Mensaje_C));          // limpia el buffer del mensaje
+        tam_cliente = sizeof(cliente);  // se debe resetear el tamaño antes de cada recvfrom
+        memset(&msj, 0, sizeof(Mensaje_C));  // limpia el buffer del mensaje
 
         // Se queda esperando hasta recibir un datagrama de algun cliente.
         recvfrom(desc_socket, &msj, sizeof(Mensaje_C), 0, (struct sockaddr *)&cliente, &tam_cliente);
 
-        if (strcmp(msj.peticion, "EXIT") == 0)       // comando de apagado remoto
+        if (strcmp(msj.peticion, "EXIT") == 0) // comando de apagado remoto
         {
             printf("\n[SERVIDOR] Comando EXIT recibido. Apagando.\n");
-            break;                                   // sale del bucle y cierra el servidor
+            break; // sale del bucle y cierra el servidor
         }
         else if (strcmp(msj.peticion, "ACTUALIZAR") == 0) // petición de sincronización
         {
-            // ── CORRECCIÓN 1 ──────────────────────────────────────────────────
-            // Ts debe capturarse INMEDIATAMENTE al recibir la petición,
-            // antes de cualquier procesamiento o retardo artificial.
-            // Si se captura después del usleep, Ts ya refleja el tiempo
-            // transcurrido durante el sleep, y sumar RTT/2 empujaría el
-            // reloj del cliente hacia el futuro de forma incorrecta.
+            // El tiempo del servidor se captura al momento de recibir la peticion
             capturar_tiempo(&msj.tiempo_servidor);   // ← Ts capturado primero
 
-            usleep(rand() % DELAY_SERV);             // simula latencia de procesamiento
-                                                     // (va DESPUÉS de capturar Ts)
-
-            printf("\n[SERVIDOR] Petición de PID %d. Hora despachada: ",
-                   msj.id_proceso);
+            // Simulamos latencia de procesamiento
+            usleep(rand() % DELAY_SERV);
+            // Mostramos sobre la terminal del servidor la hora en la que recibio la peticion con PID
+            printf("\n[SERVIDOR] Petición recibida de PID %d. Hora despachada: ", msj.id_proceso);
+            // Se muestra la hora [H:M:S:ms]
             mostrar_hora(&msj.tiempo_servidor);
 
-            strcpy(msj.peticion, "OK");              // cambia la petición a confirmación
+            strcpy(msj.peticion, "OK"); // cambia la petición a confirmación
 
             // Devuelve el mensaje (con Ts dentro) al cliente que lo solicitó
-            sendto(desc_socket,
-                   &msj, sizeof(Mensaje_C), 0,
-                   (struct sockaddr *)&cliente, tam_cliente);
+            sendto(desc_socket, &msj, sizeof(Mensaje_C), 0, (struct sockaddr *)&cliente, tam_cliente);
         }
+        // Regresamos a escuchar y limpiar la estructura.
     }
-
-    close(desc_socket);                              // libera el descriptor del socket
+    // Si el comando EXIT se recibio, se debe cerrar el socket
+    close(desc_socket); // libera el descriptor del socket
 }
 
-// ─────────────────────────────────────────────────────────────
-// CLIENTE — (El Esclavo que aplica la Matemática)
-// ─────────────────────────────────────────────────────────────
+// El cliente se encargara de solicitar al servidor para sincronizar su reloj
 void ejecutar_cliente_C(int indice)
 {
-    srand(time(NULL) ^ (getpid() << 16));   // semilla única por proceso (XOR con PID)
-    usleep(rand() % 500000);                // retardo aleatorio para escalonar los clientes
+    srand(time(NULL) ^ (getpid() << 16));   // semilla única por proceso
+    usleep(rand() % DELAY_CLI); // retardo aleatorio para escalonar los clientes
 
     int desc_socket;             // descriptor del socket UDP del cliente
     struct sockaddr_in dest;     // dirección del servidor destino
@@ -123,13 +130,12 @@ void ejecutar_cliente_C(int indice)
     dest.sin_port   = htons(PUERTO);        // puerto del servidor en orden de red
     inet_aton(DIR_SERV, &dest.sin_addr);    // convierte la IP del servidor a binario
 
-    // ── CORRECCIÓN 2: bucle de reintento por RTT alto ────────────────────────
     // El algoritmo de Cristian especifica que si el RTT es demasiado grande,
     // la estimación Ts + RTT/2 tiene demasiado error y el resultado no es
     // confiable. En ese caso se debe repetir la petición hasta obtener
     // un RTT dentro del umbral aceptable (RTT_MAX_MS).
-    long long rtt_ms;            // RTT medido en este intento
-    int intentos = 0;            // contador de intentos realizados
+    long long rango; // RTT medido en este intento
+    int intentos = 0; // contador de intentos realizados
 
     // Utilizamos un ciclo do-while por si la diferencia de tiempo es mayor al limite establecido
     do
@@ -140,70 +146,52 @@ void ejecutar_cliente_C(int indice)
         msj.id_proceso = getpid();            // identifica al proceso cliente
         strcpy(msj.peticion, "ACTUALIZAR");   // petición de sincronización al servidor
 
-        // ── PASO 1: Capturar T0 y enviar la petición ─────────────────────────
+        // PASO 1: Capturar T0 y enviar la petición
         capturar_tiempo(&msj.tiempo_envio);   // T0: estampa de tiempo de salida
-        sendto(desc_socket,
-               &msj, sizeof(Mensaje_C), 0,
-               (struct sockaddr *)&dest, sizeof(dest));
+        sendto(desc_socket, &msj, sizeof(Mensaje_C), 0, (struct sockaddr *)&dest, sizeof(dest));
 
-        // ── PASO 2: Recibir la respuesta del servidor (Ts viaja dentro de msj)
+        // PASO 2: Recibir la respuesta del servidor (Ts viaja dentro de msj)
         socklen_t tam_struct = sizeof(dest);
-        recvfrom(desc_socket,
-                 &msj, sizeof(Mensaje_C), 0,
-                 (struct sockaddr *)&dest, &tam_struct);
+        recvfrom(desc_socket, &msj, sizeof(Mensaje_C), 0, (struct sockaddr *)&dest, &tam_struct);
 
-        // ── PASO 3: Capturar T1 ───────────────────────────────────────────────
+        // PASO 3: Capturamos el tiempo en que llego la respuesta
         capturar_tiempo(&msj.tiempo_respuesta);  // T1: estampa de tiempo de llegada
 
-        // Usamos long long para numeros de 64 bits y poder tener mejor aproximacion
-        // Realizamos la conversion de horas, minutos y segundos a milisegundos
-        // 1 hora = 3600 segundos * 1000 ms
-        // 1 minuto = 60 segundos * 1000 ms
-        // 1 segundo = 1000 ms
-        // Convertimos el tiempo de envio a T0 a milisegundos totales desde medianoche
-        long long t0_ms = (long long)msj.tiempo_envio.horas * 3600000LL +
-                          (long long)msj.tiempo_envio.minutos * 60000LL +
-                          (long long)msj.tiempo_envio.segundos * 1000LL +
-                          msj.tiempo_envio.milisegundos;
+        // Convertimos el tiempo de envio T0 a milisegundos
+        long long t0_ms = convertion_ms(&msj.tiempo_envio);
 
-        // Convertimos el tiempo de llegada a T1 a milisegundos totales desde medianoche
-        long long t1_ms = (long long)msj.tiempo_respuesta.horas * 3600000LL +
-                          (long long)msj.tiempo_respuesta.minutos * 60000LL +
-                          (long long)msj.tiempo_respuesta.segundos * 1000LL +
-                          msj.tiempo_respuesta.milisegundos;
+        // Convertimos el tiempo de respuesta T1 a milisegundos
+        long long t1_ms = convertion_ms(&msj.tiempo_respuesta);
 
-        rtt_ms = t1_ms - t0_ms; // RTT = T1 - T0 (diferencia de tiempo de ida y vuelta)
+        rango = t1_ms - t0_ms; // RTT = T1 - T0 (diferencia de tiempo de ida y vuelta)
 
-        if (rtt_ms > RTT_MAX_MS)  // si el rango supera el umbral muestra mensaje y repite
-            printf("[CLIENTE #%02d] RTT = %lld ms demasiado alto, reintentando... (intento %d)\n", indice + 1, rtt_ms, intentos);
+        if (rango > RTT_MAX_MS)  // si el rango supera el umbral muestra mensaje y repite
+            printf("[CLIENTE #%02d] RTT = %lld ms demasiado alto, reintentando... (intento %d)\n", indice + 1, rango, intentos);
 
-    } while (rtt_ms > RTT_MAX_MS);          // repite hasta obtener un RTT aceptable
+    } while (rango > RTT_MAX_MS); // repite hasta obtener un rango aceptable
 
     // FÓRMULA DE CRISTIAN -> si la respuesta entre el servidor y el cliente estan dentro del limite se corrige el reloj
     // El reloj del servidor mas la diferencia de tiempo ida y vuelta del mensaje entre 2 (asumiendo simetria)
     // hora_corregida = Ts + (T1 - T0) / 2
     // La mitad del RTT aproxima el tiempo que tardó el mensaje en llegar desde el servidor hasta el cliente
 
-    // Convertimos el timepo del servidor Ts a milisegundos totales desde medianoche
-    long long ts_ms = (long long)msj.tiempo_servidor.horas * 3600000LL +
-                      (long long)msj.tiempo_servidor.minutos * 60000LL +
-                      (long long)msj.tiempo_servidor.segundos * 1000LL +
-                      msj.tiempo_servidor.milisegundos;
+    // Convertimos el tiempo del servidor Ts a milisegundos
+    long long ts_ms = convertion_ms(&msj.tiempo_servidor);
 
-    long long latencia_ms      = rtt_ms / 2;            // latencia estimada = RTT / 2
+    long long latencia_ms      = rango / 2;            // latencia estimada = RTT / 2
     long long hora_corregida_ms = ts_ms + latencia_ms;  // hora ajustada por Cristian
 
     // Reconstruimos la hora corregida en la estructura tiempo (h:m:s:ms)
     reloj_sincronizado.milisegundos = hora_corregida_ms % 1000;          // residuo en ms
 
-    long long seg_totales           = hora_corregida_ms / 1000;          // total en segundos
-    reloj_sincronizado.segundos     = seg_totales % 60;                  // segundos (0-59)
+    long long seg_totales = hora_corregida_ms / 1000; // total en segundos
+    reloj_sincronizado.segundos = seg_totales % 60;   // segundos (0-59)
 
-    long long min_totales           = seg_totales / 60;                  // total en minutos
-    reloj_sincronizado.minutos      = min_totales % 60;                  // minutos (0-59)
+    long long min_totales = seg_totales / 60;        // total en minutos
+    reloj_sincronizado.minutos = min_totales % 60;   // minutos (0-59)
 
-    long long horas_totales         = min_totales / 60;                  // total en horas
-    reloj_sincronizado.horas        = horas_totales % 24;                // horas formato 24h
+    long long horas_totales = min_totales / 60;    // total en horas
+    reloj_sincronizado.horas = horas_totales % 24; // horas formato 24h
 
     // Imprimimos todos los tiempos y el resultado final
     printf("\n[CLIENTE #%02d | PID %d] ---> T0 (Salida)    : ", indice + 1, getpid());
@@ -215,33 +203,28 @@ void ejecutar_cliente_C(int indice)
     printf("[CLIENTE #%02d | PID %d] ---> Ts (Servidor)  : ", indice + 1, getpid());
     mostrar_hora(&msj.tiempo_servidor);
 
-    printf("[CLIENTE #%02d | PID %d] ---> RTT             : %lld ms (intento(s): %d)\n",
-           indice + 1, getpid(), rtt_ms, intentos);   // muestra el RTT final aceptado
+    printf("[CLIENTE #%02d | PID %d] ---> RTT            : %lld ms (intento(s): %d)\n", indice + 1, getpid(), rango, intentos);   // muestra el RTT final aceptado
 
-    printf("[CLIENTE #%02d | PID %d] ---> Latencia Calc  : %lld ms\n",
-           indice + 1, getpid(), latencia_ms);
+    printf("[CLIENTE #%02d | PID %d] ---> Latencia Calc  : %lld ms\n", indice + 1, getpid(), latencia_ms);
 
     printf("[CLIENTE #%02d | PID %d] ---> RELOJ AJUSTADO : ", indice + 1, getpid());
     mostrar_hora(&reloj_sincronizado);
 
     close(desc_socket);   // libera el descriptor del socket
     usleep(1000000);      // espera 1 s para que el servidor procese antes de salir
-    exit(0);              // el proceso hijo termina limpiamente
+    exit(0);              // el proceso nieto termina limpiamente
 }
 
-// ─────────────────────────────────────────────────────────────
-// MAIN
-// ─────────────────────────────────────────────────────────────
 int main()
 {
-    pid_t pid = fork();              // crea el proceso hijo (coordinador de clientes)
+    pid_t pid = fork(); // se crea el proceso hijo (los nietos seran clientes)
 
-    if (pid < 0) exit(1);           // error al hacer fork
+    if (pid < 0) exit(1); // error al hacer fork
 
-    // ── PROCESO PADRE: ejecuta el servidor ───────────────────────────────────
+    // Proceso padre actuara como el servidor
     if (pid > 0)
     {
-        ejecutar_servidor_C();       // bloquea aquí hasta recibir EXIT
+        ejecutar_servidor_C(); // Entra aquí y sale hasta recibir EXIT
 
         // ── CORRECCIÓN 3 ──────────────────────────────────────────────────────
         // El wait(NULL) original podía devolver -1 silenciosamente porque el
@@ -265,8 +248,8 @@ int main()
             if (fork() == 0)                        // cada nieto es un cliente independiente
                 ejecutar_cliente_C(i);              // ejecuta el algoritmo de Cristian y hace exit(0)
         }
-
-        while (wait(NULL) > 0);     // espera a que todos los nietos (clientes) terminen
+        // El proceso hijo espera a que todos los nietos terminen (clientes).
+        for (int i = 0; i < N_CLIENTES; i++) wait(NULL);
 
         // Todos los clientes terminaron: ordenar el apagado del servidor
         int sock_exit = socket(AF_INET, SOCK_DGRAM, 0);  // socket temporal para enviar EXIT
@@ -282,9 +265,7 @@ int main()
         strcpy(msj_exit.peticion, "EXIT");                // comando de apagado
 
         // Envía el EXIT al servidor para que salga de su bucle
-        sendto(sock_exit,
-               &msj_exit, sizeof(Mensaje_C), 0,
-               (struct sockaddr *)&dest_exit, sizeof(dest_exit));
+        sendto(sock_exit, &msj_exit, sizeof(Mensaje_C), 0, (struct sockaddr *)&dest_exit, sizeof(dest_exit));
 
         close(sock_exit);   // libera el socket temporal
         exit(0);            // el proceso hijo coordinador termina
