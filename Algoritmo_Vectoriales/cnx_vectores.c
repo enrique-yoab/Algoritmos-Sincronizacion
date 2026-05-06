@@ -7,37 +7,42 @@
 #include <time.h>
 #include "vector.h"
 
-int PORT = 0;       // Puerto de escucha
-Mensaje_V local;       // Estructura del mensaje de la computadora
-Mensaje_V externo;     // Estructura para almacenar el mensaje recibido.
-int puertos[NUM_NODOS];     // Vector que almacenara el puerto de cada proceso
+// Variables globales aisladas para cada proceso P2P gracias a fork()
+int PORT = 0;               // Puerto asignado a este nodo
+Mensaje_V local;            // Estructura que mantiene el vector y estado interno
+Mensaje_V externo;          // Buffer para recibir mensajes de la red
+int puertos[NUM_NODOS];     // Directorio de la red P2P (Agenda de vecinos)
 
-// Bandera global para controlar el estado de la "computadora"
-int encendido = 1;
-int enviar = 0;
+int encendido = 1;          // Bandera de ciclo de vida del hilo principal
+int enviar = 0;             // Bandera disparadora de eventos de envío
 
+// Función auxiliar para calcular el máximo entre dos números
 int mayor(int a, int b){return a > b ? a : b;}
 
+// Esta funcion se encargara de enviar un mensaje a un puerto en especifico
 void enviar_msj(int puerto_destino, Mensaje_V datos) {
     int sock = 0;
     struct sockaddr_in serv_addr;
-
+    // Creacion del socket tipo TCP para garantizar el envio y recepcion de mensaje
     if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0) return;
 
-    serv_addr.sin_family = AF_INET;
     serv_addr.sin_port = htons(puerto_destino);
+    serv_addr.sin_family = AF_INET;
     inet_pton(AF_INET, "127.0.0.1", &serv_addr.sin_addr);
 
+    // Tratamos de conectarnos si no puede nos salimos del programa
     if (connect(sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
         perror("Error de conexion");
         close(sock);
         return;
     }
-    // Enviamos la estructura completa como un bloque de bytes
+    // Enviamos el mensaje al conectarnos en el puerto definido
     send(sock, &datos, sizeof(Mensaje_V), 0);
+    // Cerramos el socket ya que enviamos.
     close(sock);
 }
 
+// Hilo Servidor: Se encarga exclusivamente de escuchar y reaccionar
 void *hilo_escucha(void *arg)
 {
     int server_fd, new_socket;
@@ -63,34 +68,39 @@ void *hilo_escucha(void *arg)
 
         if (new_socket < 0) break;
 
-        // Limpiamos y leemos la estructura completa
         memset(&externo, 0, sizeof(Mensaje_V));
         read(new_socket, &externo, sizeof(Mensaje_V));
 
-        // 1. Merge: tomar el máximo componente a componente
-        for (int i = 0; i < NUM_NODOS; i++) {
-            local.vector[i] = mayor(local.vector[i], externo.vector[i]);
+        // ALGORITMO DE FIDGE-MATTERN (RELOJES VECTORIALES) - REGLA DE RECEPCIÓN
+        // Filtro de Inyección: Solo evaluamos matemáticamente si NO viene del Padre
+        if (externo.id_proceso != 99) 
+        {
+            // 1. Regla del Merge: El conocimiento se absorbe tomando el mayor valor
+            //    de cada componente entre nuestro vector y el vector entrante.
+            for (int i = 0; i < NUM_NODOS; i++) {
+                local.vector[i] = mayor(local.vector[i], externo.vector[i]);
+            }
+            // 2. Evento de Recepción: Incrementamos nuestro propio índice para marcar
+            //    que ocurrió un evento en nuestra línea temporal.
+            local.vector[local.indice]++;
         }
-        // 2. Luego incrementar el propio índice (evento de recepción)
-        local.vector[local.indice]++;
 
         printf("\nInicio -> Mensaje Computadora [C%02d] <-\n", local.id_proceso);
         printf("--- ID Proceso: %d\n", externo.id_proceso);
         printf("--- Peticion: %s\n", externo.peticion);
-        printf("--- Reloj Externo: ");
-        imprimeV(externo.vector);
-        printf("--- Reloj Local: ");
-        imprimeV(local.vector);
+        printf("--- Reloj Externo: "); imprimeV(externo.vector);
+        printf("--- Reloj Local:   "); imprimeV(local.vector);
         printf("Fin -> Mensaje Computadora [C%02d] <-\n", local.id_proceso);
 
-        // Condición de apagado basada en el texto dentro de la estructura
+        // Intérprete de Comandos de Control (Plano de Control)
         if (strcmp(externo.peticion, CMD_EX) == 0)
         {
             printf("\n[C%02d] Apagando por comando remoto...\n\n", local.id_proceso);
-            encendido = 0;
-        }else if(strcmp(externo.peticion, CMD_EN) == 0)
+            encendido = 0; // Rompe el while de ambos hilos
+        }
+        else if(strcmp(externo.peticion, CMD_EN) == 0)
         {
-            enviar = 1;
+            enviar = 1; // Dispara el evento de envío en el hilo principal
         }
         close(new_socket);
     }
@@ -98,23 +108,23 @@ void *hilo_escucha(void *arg)
     return NULL;
 }
 
+// Hilo Principal: Motor del nodo P2P
 void conexion_p2p(Mensaje_V user, int dir[])
 {
     pthread_t thread_id;
-    // Registramos el directorio de puertos
+    
+    // Inyección de configuración local (El genoma del nodo)
     memcpy(&puertos, dir, sizeof(puertos));
-    // Registramos el puerto que desea utilizar y escuchar
     PORT = dir[user.indice];
-    // Registramos el id que se le asigna
     local.id_proceso = user.id_proceso;
-    // Registramos el indice al que corresponde en el vector
     local.indice = user.indice;
-    // Aumentamos su reloj logico por ser un eveno del proceso
+    
+    // Todo vector inicia en [0,0,0]. El encendido del proceso cuenta como el Evento 1
     local.vector[local.indice]++;
-    // 1. Iniciamos el hilo de escucha (el "Servidor" interno)
+    
+    // Desplegamos el "Oído" del nodo en un hilo concurrente
     pthread_create(&thread_id, NULL, hilo_escucha, NULL);
-    // 2. El hilo principal se queda monitoreando la bandera 'encendido' y 'enviar'
-    // Por si necesita volverse cliente y enviar un mensaje a otro proceso o cerrar el proceso en si
+    
     srand(time(NULL) ^ getpid());
 
     while (encendido)
@@ -122,29 +132,35 @@ void conexion_p2p(Mensaje_V user, int dir[])
         if (enviar == 1)
         {
             enviar = 0;
-            local.vector[local.indice]++; // se incrementa ya que es un evento de 'envio'
-
-            int indice_new;
-            do{
-                indice_new = rand() % NUM_NODOS;
-            } while (indice_new == local.indice);
             
-            printf("\n[C%02d] Enviare mensaje a la computadora computadora %02d con puerto %d...\n", local.id_proceso, (indice_new + 1) * 5, puertos[indice_new]);
+            // ALGORITMO DE FIDGE-MATTERN - REGLA DE ENVÍO
+            // Todo evento local interno (como decidir enviar algo) avanza el reloj propio
+            local.vector[local.indice]++; 
+
+            // Decisión libre: El nodo decide aleatoriamente a quién contactar
+            int indice_new;
+            do {
+                indice_new = rand() % NUM_NODOS;
+            } while (indice_new == local.indice); // Evita hacerse ecos a sí mismo
+            
+            printf("\n[C%02d] Enviare mensaje a la computadora %02d con puerto %d...\n", 
+                   local.id_proceso, (indice_new + 1) * 5, puertos[indice_new]);
+                   
             memset(local.peticion, 0, sizeof(local.peticion));
             snprintf(local.peticion, sizeof(local.peticion), "Soy la computadora %02d", local.id_proceso);
+            
+            // Transmisión asíncrona del conocimiento causal
             enviar_msj(puertos[indice_new], local);
         }
+        usleep(50000); // Pequeña pausa para no saturar el CPU en el ciclo while
     }
-    // 3. Limpieza y apagado
     pthread_join(thread_id, NULL);
 }
 
+// Función auxiliar de formateo visual
 void imprimeV(int arr[])
 {
     printf("[");
-    for (int i = 0; i < NUM_NODOS; i++)
-    {
-        printf(" %d ", arr[i]);
-    }
+    for (int i = 0; i < NUM_NODOS; i++) { printf(" %d ", arr[i]); }
     printf("]\n");
 }
