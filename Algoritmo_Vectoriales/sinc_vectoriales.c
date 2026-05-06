@@ -38,20 +38,19 @@ int main()
         exit(0);
     }
     
-    // PROCESO PADRE (SIMULADOR DE CAOS): Orquesta los eventos aleatoriamente
+    // PROCESO PADRE (SIMULADOR DE CAOS): Inyecta los eventos aleatoriamente
     else
     {
         srand(time(NULL) ^ getpid() << 16);
-        sleep(1); // Gracia para levantar sockets
+        sleep(1); // Damos 1 segundo para levantar sockets
         
         printf("\n=======================================================\n");
         printf(" [PADRE] INICIANDO SIMULACIÓN P2P (RELOJES VECTORIALES)\n");
         printf("=======================================================\n");
 
         Mensaje_V inyeccion;
-        int num_eventos = 5; 
         
-        for(int i = 0; i < num_eventos; i++) 
+        for(int i = 0; i < NUM_EVENTO; i++) 
         {
             int indice_elegido = rand() % NUM_NODOS;
             int puerto_elegido = 3000 + indice_elegido;
@@ -62,13 +61,13 @@ int main()
             // El memset previo asegura que su vector enviado es [0,0,0].
             // Este proceso inyecta las instrucciones sin afectar los relojes
             inyeccion.id_proceso = 99; 
-            strcpy(inyeccion.peticion, CMD_EN); 
+            if (rand() % 2 == 1) strcpy(inyeccion.peticion, CMD_EN); 
+            else strcpy(inyeccion.peticion, CMD_IN);
             
-            printf("\n[PADRE] Ordenando a la computadora C%02d (Puerto %d) que actúe...\n", 
-                   (indice_elegido + 1) * 5, puerto_elegido);
+            printf("\n[PADRE] Ordenando a la computadora C%02d (Puerto %d) que actúe...\n", (indice_elegido + 1) * 5, puerto_elegido);
                    
             enviar_msj(puerto_elegido, inyeccion);
-            usleep(150000); // Ritmo de inyección de caos
+            usleep(150000); // Ritmo al que se inyecta los eventos de envio o internos
         }
 
         printf("\n[PADRE] Simulación terminada. Esperando a que la red se estabilice...\n");

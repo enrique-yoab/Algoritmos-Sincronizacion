@@ -2,8 +2,10 @@
 #define VECTOR_H
 
 #define NUM_NODOS 3    // Numero de computadoras a crear
+#define NUM_EVENTO 7   // Numero de eventos a realizarse en la red
 #define CMD_EX "EXIT"  // Comando de apagado global
-#define CMD_EN "ENVIAR" // Comando de inyección (Plano de control)
+#define CMD_EN "ENVIAR" // Comando de inyección (Evento de Envio)
+#define CMD_IN "LOCAL"  // Comando de inyeccion (Evento interno)
 
 // ------- Estructura del mensaje de vectores (Relojes Vectoriales) ------------
 // A diferencia de Lamport (escalar), aquí llevamos el registro de la causalidad de TODOS los procesos de la red.

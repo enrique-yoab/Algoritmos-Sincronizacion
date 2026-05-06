@@ -71,37 +71,38 @@ void *hilo_escucha(void *arg)
         memset(&externo, 0, sizeof(Mensaje_V));
         read(new_socket, &externo, sizeof(Mensaje_V));
 
-        // ALGORITMO DE FIDGE-MATTERN (RELOJES VECTORIALES) - REGLA DE RECEPCIÓN
-        // Filtro de Inyección: Solo evaluamos matemáticamente si NO viene del Padre
-        if (externo.id_proceso != 99) 
+        // 1. EVALUAR PRIMERO EL PLANO DE CONTROL (Órdenes del Padre)
+        if (externo.id_proceso == 99) 
         {
-            // 1. Regla del Merge: El conocimiento se absorbe tomando el mayor valor
-            //    de cada componente entre nuestro vector y el vector entrante.
+            if (strcmp(externo.peticion, CMD_EX) == 0) {
+                printf("\n[C%02d] Apagando por comando remoto...\n\n", local.id_proceso);
+                encendido = 0; 
+            }
+            else if(strcmp(externo.peticion, CMD_EN) == 0) {
+                enviar = 1; 
+            }
+            else if (strcmp(externo.peticion, CMD_IN) == 0) {
+                printf("\n[C%02d] -> EVENTO INTERNO <- Ejecutando tarea local...\n", local.id_proceso);
+                local.vector[local.indice]++; // Incrementamos antes de imprimir el log
+            }
+        }
+        // 2. EVALUAR EL PLANO DE DATOS (Red P2P Real)
+        else 
+        {
             for (int i = 0; i < NUM_NODOS; i++) {
                 local.vector[i] = mayor(local.vector[i], externo.vector[i]);
             }
-            // 2. Evento de Recepción: Incrementamos nuestro propio índice para marcar
-            //    que ocurrió un evento en nuestra línea temporal.
             local.vector[local.indice]++;
         }
 
-        printf("\nInicio -> Mensaje Computadora [C%02d] <-\n", local.id_proceso);
-        printf("--- ID Proceso: %d\n", externo.id_proceso);
-        printf("--- Peticion: %s\n", externo.peticion);
+        // 3. SE IMPRIME LO QUE SE RECIBE 
+        printf("\nInicio -> Evento en Computadora [C%02d] <-\n", local.id_proceso);
+        printf("--- ID del evento: %d --> %s\n", externo.id_proceso,(externo.id_proceso == 99) ? "PROCESO PADRE" : "NODO VECINO");
+        printf("--- Peticion recibida: %s\n", externo.peticion);
         printf("--- Reloj Externo: "); imprimeV(externo.vector);
         printf("--- Reloj Local:   "); imprimeV(local.vector);
-        printf("Fin -> Mensaje Computadora [C%02d] <-\n", local.id_proceso);
+        printf("Fin -> Evento en Computadora [C%02d] <-\n", local.id_proceso);
 
-        // Intérprete de Comandos de Control (Plano de Control)
-        if (strcmp(externo.peticion, CMD_EX) == 0)
-        {
-            printf("\n[C%02d] Apagando por comando remoto...\n\n", local.id_proceso);
-            encendido = 0; // Rompe el while de ambos hilos
-        }
-        else if(strcmp(externo.peticion, CMD_EN) == 0)
-        {
-            enviar = 1; // Dispara el evento de envío en el hilo principal
-        }
         close(new_socket);
     }
     close(server_fd);
