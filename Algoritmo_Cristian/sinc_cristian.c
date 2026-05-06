@@ -8,19 +8,12 @@
 #include <time.h>         // clock_gettime, localtime
 #include "header.h"       // estructuras tiempo / Mensaje_C y constantes
 
-// ─────────────────────────────────────────────────────────────
-// CONSTANTE: umbral máximo de RTT aceptable para Cristian
-// Si el viaje de ida y vuelta tarda más que esto, el resultado
-// es demasiado impreciso y se debe reintentar la petición.
-// ─────────────────────────────────────────────────────────────
-#define RTT_MAX_MS  650         // 500 ms como límite razonable en loopback
-#define DELAY_SERV  300000      // delay máximo del servidor en µs (300 ms < RTT_MAX_MS)
+// Variables globales para definir el limite en la respuesta
+// Y para el retardo maximo del servidor a la hora de enviar respuestas.
+#define RTT_MAX_MS  500         // 500 ms como límite razonable en loopback
+#define DELAY_SERV  300000      // Retardo máximo del servidor en µs (300 ms < RTT_MAX_MS)
 
-// ─────────────────────────────────────────────────────────────
-// FUNCIONES AUXILIARES PARA EL MANEJO DEL TIEMPO
-// ─────────────────────────────────────────────────────────────
-
-// Imprime una estructura tiempo con formato H:M:S:ms
+// Esta funcion imprime una estructura tiempo con formato H:M:S:ms
 void mostrar_hora(tiempo *t)
 {
     printf("[%d:%d:%d:%d]\n",   // formato H:M:S:ms
@@ -65,19 +58,16 @@ void ejecutar_servidor_C()
     direct.sin_port        = htons(PUERTO);          // puerto en orden de red
     direct.sin_addr.s_addr = INADDR_ANY;             // acepta peticiones de cualquier IP
 
-    bind(desc_socket,                                // asocia el socket a la dirección
-         (struct sockaddr *)&direct,
-         sizeof(direct));
+    // Se asocia el socket a la direccion "escucha por el puerto"
+    bind(desc_socket, (struct sockaddr *)&direct, sizeof(direct)); 
 
     while (1)                                        // bucle infinito hasta recibir EXIT
     {
         tam_cliente = sizeof(cliente);               // resetea el tamaño antes de cada recvfrom
         memset(&msj, 0, sizeof(Mensaje_C));          // limpia el buffer del mensaje
 
-        // Espera bloqueante: recibe un datagrama de cualquier cliente
-        recvfrom(desc_socket,
-                 &msj, sizeof(Mensaje_C), 0,
-                 (struct sockaddr *)&cliente, &tam_cliente);
+        // Se queda esperando hasta recibir un datagrama de algun cliente.
+        recvfrom(desc_socket, &msj, sizeof(Mensaje_C), 0, (struct sockaddr *)&cliente, &tam_cliente);
 
         if (strcmp(msj.peticion, "EXIT") == 0)       // comando de apagado remoto
         {
@@ -141,9 +131,10 @@ void ejecutar_cliente_C(int indice)
     long long rtt_ms;            // RTT medido en este intento
     int intentos = 0;            // contador de intentos realizados
 
+    // Utilizamos un ciclo do-while por si la diferencia de tiempo es mayor al limite establecido
     do
     {
-        intentos++;              // incrementa el contador de intentos
+        intentos++; // incrementa el contador de intentos
 
         memset(&msj, 0, sizeof(Mensaje_C));   // limpia el mensaje antes de cada intento
         msj.id_proceso = getpid();            // identifica al proceso cliente
@@ -164,36 +155,40 @@ void ejecutar_cliente_C(int indice)
         // ── PASO 3: Capturar T1 ───────────────────────────────────────────────
         capturar_tiempo(&msj.tiempo_respuesta);  // T1: estampa de tiempo de llegada
 
-        // Convertimos T0 a milisegundos totales desde medianoche
-        long long t0_ms = (long long)msj.tiempo_envio.horas        * 3600000LL
-                        + (long long)msj.tiempo_envio.minutos       *   60000LL
-                        + (long long)msj.tiempo_envio.segundos      *    1000LL
-                        +            msj.tiempo_envio.milisegundos;
+        // Usamos long long para numeros de 64 bits y poder tener mejor aproximacion
+        // Realizamos la conversion de horas, minutos y segundos a milisegundos
+        // 1 hora = 3600 segundos * 1000 ms
+        // 1 minuto = 60 segundos * 1000 ms
+        // 1 segundo = 1000 ms
+        // Convertimos el tiempo de envio a T0 a milisegundos totales desde medianoche
+        long long t0_ms = (long long)msj.tiempo_envio.horas * 3600000LL +
+                          (long long)msj.tiempo_envio.minutos * 60000LL +
+                          (long long)msj.tiempo_envio.segundos * 1000LL +
+                          msj.tiempo_envio.milisegundos;
 
-        // Convertimos T1 a milisegundos totales desde medianoche
-        long long t1_ms = (long long)msj.tiempo_respuesta.horas    * 3600000LL
-                        + (long long)msj.tiempo_respuesta.minutos   *   60000LL
-                        + (long long)msj.tiempo_respuesta.segundos  *    1000LL
-                        +            msj.tiempo_respuesta.milisegundos;
+        // Convertimos el tiempo de llegada a T1 a milisegundos totales desde medianoche
+        long long t1_ms = (long long)msj.tiempo_respuesta.horas * 3600000LL +
+                          (long long)msj.tiempo_respuesta.minutos * 60000LL +
+                          (long long)msj.tiempo_respuesta.segundos * 1000LL +
+                          msj.tiempo_respuesta.milisegundos;
 
-        rtt_ms = t1_ms - t0_ms;             // RTT = T1 - T0 (tiempo total de ida y vuelta)
+        rtt_ms = t1_ms - t0_ms; // RTT = T1 - T0 (diferencia de tiempo de ida y vuelta)
 
-        if (rtt_ms > RTT_MAX_MS)            // si el RTT supera el umbral
-            printf("[CLIENTE #%02d] RTT = %lld ms demasiado alto, reintentando... (intento %d)\n",
-                   indice + 1, rtt_ms, intentos);
+        if (rtt_ms > RTT_MAX_MS)  // si el rango supera el umbral muestra mensaje y repite
+            printf("[CLIENTE #%02d] RTT = %lld ms demasiado alto, reintentando... (intento %d)\n", indice + 1, rtt_ms, intentos);
 
     } while (rtt_ms > RTT_MAX_MS);          // repite hasta obtener un RTT aceptable
 
-    // ── FÓRMULA DE CRISTIAN ───────────────────────────────────────────────────
+    // FÓRMULA DE CRISTIAN -> si la respuesta entre el servidor y el cliente estan dentro del limite se corrige el reloj
+    // El reloj del servidor mas la diferencia de tiempo ida y vuelta del mensaje entre 2 (asumiendo simetria)
     // hora_corregida = Ts + (T1 - T0) / 2
-    // La mitad del RTT aproxima el tiempo que tardó el mensaje en llegar
-    // desde el servidor hasta el cliente (asumiendo simetría de la red).
+    // La mitad del RTT aproxima el tiempo que tardó el mensaje en llegar desde el servidor hasta el cliente
 
-    // Convertimos Ts a milisegundos totales desde medianoche
-    long long ts_ms = (long long)msj.tiempo_servidor.horas    * 3600000LL
-                    + (long long)msj.tiempo_servidor.minutos   *   60000LL
-                    + (long long)msj.tiempo_servidor.segundos  *    1000LL
-                    +            msj.tiempo_servidor.milisegundos;
+    // Convertimos el timepo del servidor Ts a milisegundos totales desde medianoche
+    long long ts_ms = (long long)msj.tiempo_servidor.horas * 3600000LL +
+                      (long long)msj.tiempo_servidor.minutos * 60000LL +
+                      (long long)msj.tiempo_servidor.segundos * 1000LL +
+                      msj.tiempo_servidor.milisegundos;
 
     long long latencia_ms      = rtt_ms / 2;            // latencia estimada = RTT / 2
     long long hora_corregida_ms = ts_ms + latencia_ms;  // hora ajustada por Cristian
