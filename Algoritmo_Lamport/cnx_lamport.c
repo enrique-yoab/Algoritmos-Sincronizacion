@@ -13,34 +13,61 @@ int PORT = 0;  // Puerto 0 ya que sera un parametro de entrada
 Mensaje_L local;  // Este servira para que la maquina configure su mensaje a enviar 
 Mensaje_L externo;   // Este servira para recibir cualquier mensaje externo
 int puertos[NUM_NODOS]; // El arreglo que contiene los puertos
-
 int encendido = 1; // Se establece en 1 ya que se quedara encendido
 int enviar = 0; // Se queda en 0 hasta que se decida enviar un mensaje
 
 // Esta funcion encuentra el mayor de dos numeros con el perador terniario
 int mayor(int a, int b){return a > b ? a : b;}
 
-// Esta funcion se encargara de enviar un mensaje a un puerto en especifico
-void enviar_msj(int puerto_destino, Mensaje_L datos) {
-    int sock = 0;
-    struct sockaddr_in serv_addr;
-    // Creacion del socket tipo TCP para garantizar el envio y recepcion de mensaje
-    if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0) return;
+void conexion_p2p(Mensaje_L user, int dir[])
+{
+    // Creamos una variable tipo hilo para la creacion del hilo servidor
+    pthread_t thread_id;
+    // Registramos el directorio de puertos
+    memcpy(&puertos, dir, sizeof(puertos));
+    // Registramos el puerto que desea utilizar y escuchar
+    PORT = dir[user.indice]; // Usamos el índice pasado como argumento para saber nuestro puerto
+    // Registramos el id que se le asigna
+    local.id_proceso = user.id_proceso;
+    // Registramos el indice al que corresponde su puerto
+    local.indice = user.indice;
+    // Inicialización del reloj lógico de Lamport
+    local.reloj++; 
 
-    serv_addr.sin_port = htons(puerto_destino);
-    serv_addr.sin_family = AF_INET;
-    inet_pton(AF_INET, DIRECTION, &serv_addr.sin_addr);
+    // Se crea un hilo que actuara como servidor (recibe mensajes)
+    pthread_create(&thread_id, NULL, hilo_escucha, NULL);
+    
+    srand(time(NULL) ^ getpid()); // Semilla única segura
+    
+    // Actua como otro hilo que se encarga de ser cliente (envia mensajes)
+    while (encendido)
+    {
+        // Si enviar cambia se realiza la accion de enviar mensaje
+        if (enviar == 1)
+        {
+            // Invertimos la condicion ya que es solo una vez
+            enviar = 0;
+            
+            // REGLA DE LAMPORT AL ENVIAR: Avanzar reloj antes de enviar
+            local.reloj++; 
 
-    // Tratamos de conectarnos si no puede nos salimos del programa
-    if (connect(sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
-        perror("Error de conexion");
-        close(sock);
-        return;
+            int indice_new;
+            // Obtenemos un indice aleatorio y evitamos enviarnos a nosotros mismos si no repite
+            do{
+                indice_new = rand() % NUM_NODOS;
+            } while (indice_new == local.indice); 
+            
+            printf("\n[C%02d] Enviare mensaje a la computadora con puerto %d...\n", local.id_proceso, puertos[indice_new]);
+            // Limpiamos nuestro buffer de peticiones
+            memset(local.peticion, 0, sizeof(local.peticion));
+            // Le grabamos el mensaje al buffer de peticiones
+            snprintf(local.peticion, sizeof(local.peticion), "Soy la computadora %02d", local.id_proceso);
+            // Enviamos el mensaje al puerto aleatorio escogido.
+            enviar_msj(puertos[indice_new], local);
+        }
     }
-    // Enviamos el mensaje al conectarnos en el puerto definido
-    send(sock, &datos, sizeof(Mensaje_L), 0);
-    // Cerramos el socket ya que enviamos.
-    close(sock);
+    // Esperamos a que termine la ejecucion del hilo servidor
+    pthread_join(thread_id, NULL);
 }
 
 // Funcion que utilizara el hilo para actuar como servidor
@@ -136,53 +163,25 @@ void *hilo_escucha(void *arg)
     return NULL;  // El hilo termina y libera sus recursos
 }
 
-void conexion_p2p(Mensaje_L user, int dir[])
-{
-    // Creamos una variable tipo hilo para la creacion del hilo servidor
-    pthread_t thread_id;
-    // Registramos el directorio de puertos
-    memcpy(&puertos, dir, sizeof(puertos));
-    // Registramos el puerto que desea utilizar y escuchar
-    PORT = dir[user.indice]; // Usamos el índice pasado como argumento para saber nuestro puerto
-    // Registramos el id que se le asigna
-    local.id_proceso = user.id_proceso;
-    // Registramos el indice al que corresponde su puerto
-    local.indice = user.indice;
-    // Inicialización del reloj lógico de Lamport
-    local.reloj++; 
+// Esta funcion se encargara de enviar un mensaje a un puerto en especifico
+void enviar_msj(int puerto_destino, Mensaje_L datos) {
+    int sock = 0;
+    struct sockaddr_in serv_addr;
+    // Creacion del socket tipo TCP para garantizar el envio y recepcion de mensaje
+    if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0) return;
 
-    // Se crea un hilo que actuara como servidor (recibe mensajes)
-    pthread_create(&thread_id, NULL, hilo_escucha, NULL);
-    
-    srand(time(NULL) ^ getpid()); // Semilla única segura
-    
-    // Actua como otro hilo que se encarga de ser cliente (envia mensajes)
-    while (encendido)
-    {
-        // Si enviar cambia se realiza la accion de enviar mensaje
-        if (enviar == 1)
-        {
-            // Invertimos la condicion ya que es solo una vez
-            enviar = 0;
-            
-            // REGLA DE LAMPORT AL ENVIAR: Avanzar reloj antes de enviar
-            local.reloj++; 
+    serv_addr.sin_port = htons(puerto_destino);
+    serv_addr.sin_family = AF_INET;
+    inet_pton(AF_INET, DIRECTION, &serv_addr.sin_addr);
 
-            int indice_new;
-            // Obtenemos un indice aleatorio y evitamos enviarnos a nosotros mismos si no repite
-            do{
-                indice_new = rand() % NUM_NODOS;
-            } while (indice_new == local.indice); 
-            
-            printf("\n[C%02d] Enviare mensaje a la computadora con puerto %d...\n", local.id_proceso, puertos[indice_new]);
-            // Limpiamos nuestro buffer de peticiones
-            memset(local.peticion, 0, sizeof(local.peticion));
-            // Le grabamos el mensaje al buffer de peticiones
-            snprintf(local.peticion, sizeof(local.peticion), "Soy la computadora %02d", local.id_proceso);
-            // Enviamos el mensaje al puerto aleatorio escogido.
-            enviar_msj(puertos[indice_new], local);
-        }
+    // Tratamos de conectarnos si no puede nos salimos del programa
+    if (connect(sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
+        perror("Error de conexion");
+        close(sock);
+        return;
     }
-    // Esperamos a que termine la ejecucion del hilo servidor
-    pthread_join(thread_id, NULL);
+    // Enviamos el mensaje al conectarnos en el puerto definido
+    send(sock, &datos, sizeof(Mensaje_L), 0);
+    // Cerramos el socket ya que enviamos.
+    close(sock);
 }
