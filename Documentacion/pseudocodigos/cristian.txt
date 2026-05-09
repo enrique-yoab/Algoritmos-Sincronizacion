@@ -1,0 +1,65 @@
+Algoritmo Sincronizacion_Cristian
+Constantes y Estructuras (header.h)
+Definir PUERTO <- 3000
+Definir RTT_MAX_MS <- 600
+Definir DIR_SERV <- "127.0.0.1"
+
+Estructura tiempo
+    horas, minutos, segundos, milisegundos ∈ Z
+FinEstructura
+
+Estructura Mensaje_C
+    id_proceso ∈ Z
+    peticion ∈ Alfabeto[200]
+    tiempo_envio, tiempo_servidor, tiempo_respuesta ∈ tiempo
+FinEstructura
+
+Funciones Auxiliares de Tiempo
+Procedimiento CAPTURAR_TIEMPO(t)
+    Leer reloj físico del sistema (CLOCK_REALTIME)
+    Guardar hora actual en estructura t
+Fin Procedimiento
+
+Procedimiento CONVERTION_MS(t)
+    Salir Tiempo transformado a milisegundos totales (int64)
+Fin Procedimiento
+
+Lógica del Servidor Maestro
+Procedimiento EJECUTAR_SERVIDOR_C
+    Definir socket <- socket(AF_INET, SOCK_DGRAM)                   ▷ Protocolo UDP
+    bind(socket, PUERTO)
+    Mientras Verdadero Hacer
+        msj <- RecibirDatagrama(socket, cliente_ip)
+        Si CompararCadena(msj.peticion, "EXIT") = 0 Entonces
+            Romper                                                  ▷ Apaga el servidor
+        Sino Si CompararCadena(msj.peticion, "ACTUALIZAR") = 0 Entonces
+            capturar_tiempo(msj.tiempo_servidor)                    ▷ Captura Ts
+            Dormir aleatoriamente para simular latencia de procesamiento
+            CopiarCadena(msj.peticion, "OK")
+            EnviarDatagrama(socket, msj, cliente_ip)                ▷ Devuelve estampa
+        Fin Si
+    Fin Mientras
+    Cerrar(socket)
+Fin Procedimiento
+
+Lógica del Cliente
+Procedimiento EJECUTAR_CLIENTE_C(indice)
+    Definir socket <- socket(AF_INET, SOCK_DGRAM)
+    Repetir
+        CopiarCadena(msj.peticion, "ACTUALIZAR")
+        msj.id_proceso <- ObtenerPID()
+        capturar_tiempo(msj.tiempo_envio)                           ▷ Paso 1: Captura T0
+        EnviarDatagrama(socket, msj, DIR_SERV)
+        RecibirDatagrama(socket, msj)                               ▷ Paso 2: Recibe Ts dentro de msj
+        capturar_tiempo(msj.tiempo_respuesta)                       ▷ Paso 3: Captura T1
+        t0 <- convertion_ms(msj.tiempo_envio)
+        t1 <- convertion_ms(msj.tiempo_respuesta)
+        rango <- t1 - t0                                            ▷ Cálculo del RTT
+    Hasta que rango <= RTT_MAX_MS                                   ▷ Filtro contra redes congestionadas
+    ts <- convertion_ms(msj.tiempo_servidor)
+    latencia <- rango / 2
+    hora_corregida <- ts + latencia                                 ▷ Aplicación Fórmula de Cristian
+    Reconstruir hora_corregida a formato H:M:S:ms
+    Imprimir hora ajustada
+    Cerrar(socket)
+Fin Procedimiento

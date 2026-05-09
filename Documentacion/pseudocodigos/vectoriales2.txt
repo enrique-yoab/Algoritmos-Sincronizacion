@@ -1,0 +1,95 @@
+Algoritmo Conexion_P2P_Vectorial
+Constantes y Variables Globales
+Definir PORT ∈ N, PORT <- 0
+Definir local, externo ∈ Mensaje_V
+Definir puertos ∈ Z[NUM_NODOS]
+Definir encendido <- 1
+Definir enviar <- 0
+
+Procedimiento MAYOR(a, b)
+    Si a > b Entonces
+        Salir a
+    Sino
+        Salir b
+    Fin Si
+Fin Procedimiento
+
+Procedimiento CONEXION_P2P(user, dir)
+    Definir thread_id ∈ Hilo
+    CopiarMemoria(puertos, dir, sizeof(puertos))
+    PORT <- dir[user.indice]
+    local.id_proceso <- user.id_proceso
+    local.indice <- user.indice
+    local.vector[local.indice] <- local.vector[local.indice] + 1           ▷ Evento 1: Encendido del proceso
+    CrearHilo(thread_id, hilo_escucha, NULL)
+    GenerarSemilla(Tiempo_Actual() XOR ObtenerPID())
+    Mientras encendido Hacer
+        Si enviar = 1 Entonces
+            enviar <- 0
+            local.vector[local.indice] <- local.vector[local.indice] + 1   ▷ REGLA FIDGE-MATTERN: Evento interno
+            Definir indice_new ∈ Z
+            Repetir
+                indice_new <- Aleatorio() MOD NUM_NODOS
+            Hasta que indice_new ≠ local.indice                            ▷ Evita hacerse eco a sí mismo
+            Escribir("\n[C", local.id_proceso, "] Enviare mensaje a la computadora con puerto ", puertos[indice_new], "...")
+            LimpiarMemoria(local.peticion)
+            FormatearCadena(local.peticion, "Soy la computadora %02d", local.id_proceso)
+            enviar_msj(puertos[indice_new], local)
+        Fin Si
+        DormirMicrosegundos(50000)
+    Fin Mientras
+    EsperarHilo(thread_id)
+Fin Procedimiento
+
+Procedimiento HILO_ESCUCHA(arg)
+    Definir server_fd, new_socket ∈ Z
+    Definir address ∈ sockaddr_in
+    Definir opt <- 1
+    server_fd <- socket(AF_INET, SOCK_STREAM, 0)
+    setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, opt)
+    address.sin_family <- AF_INET
+    address.sin_addr.s_addr <- INADDR_ANY
+    address.sin_port <- htons(PORT)
+    bind(server_fd, address)
+    listen(server_fd, 3)
+    Mientras encendido Hacer
+        addrlen <- sizeof(address)
+        new_socket <- accept(server_fd, address, addrlen)
+        Si new_socket < 0 Entonces
+            Romper
+        Fin Si
+        LimpiarMemoria(externo)
+        Leer(new_socket, externo)
+        Si externo.id_proceso = 99 Entonces                                ▷ Mensajes del Padre (Control)
+            Si CompararCadena(externo.peticion, CMD_EX) = 0 Entonces
+                encendido <- 0
+            Sino Si CompararCadena(externo.peticion, CMD_EN) = 0 Entonces
+                enviar <- 1
+            Sino Si CompararCadena(externo.peticion, CMD_IN) = 0 Entonces
+                local.vector[local.indice] <- local.vector[local.indice] + 1
+            Fin Si
+        Sino                                                               ▷ Plano de Datos (Red P2P Real)
+            Para i <- 0 hasta NUM_NODOS - 1 Hacer
+                local.vector[i] <- mayor(local.vector[i], externo.vector[i])   ▷ REGLA FIDGE-MATTERN: Actualizar componentes
+            Fin Para
+            local.vector[local.indice] <- local.vector[local.indice] + 1   ▷ Incremento por recepción
+        Fin Si
+        Escribir("\nInicio -> Evento en Computadora [C", local.id_proceso, "] <-")
+        Escribir("--- ID del evento: ", externo.id_proceso)
+        Escribir("--- Peticion: ", externo.peticion)
+        imprimeV(externo.vector)
+        imprimeV(local.vector)
+        Escribir("Fin -> Evento en Computadora [C", local.id_proceso, "] <-\n")
+        Cerrar(new_socket)
+    Fin Mientras
+    Cerrar(server_fd)
+    Salir NULL
+Fin Procedimiento
+
+Procedimiento IMPRIMEV(arr)
+    EscribirSinSalto("[")
+    Para i <- 0 hasta NUM_NODOS - 1 Hacer
+        EscribirSinSalto(" ", arr[i], " ")
+    Fin Para
+    Escribir("]")
+Fin Procedimiento

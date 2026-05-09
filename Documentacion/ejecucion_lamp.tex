@@ -1,0 +1,158 @@
+\subsubsection{Ejecución de Lamport.}
+
+\begin{lstlisting}[style=estiloC]
+[C05] Escuchando Mensaje_L en puerto 3000...
+[C10] Escuchando Mensaje_L en puerto 3001...
+[C15] Escuchando Mensaje_L en puerto 3002...
+
+=======================================================
+ [PADRE] INICIANDO SIMULACION P2P (RELOJES DE LAMPORT) 
+=======================================================
+
+[PADRE] Ordenando a la computadora 05 con el puerto 3000 a realizar un evento...
+
+Inicio -> Mensaje Computadora [C05] <-
+--- ID_proceso: 99
+--- Peticion: ENVIAR
+--- Reloj Externo (Ts): 0
+--- Reloj Local Actualizado: 2
+Fin -> Mensaje Computadora [C05] <-
+
+[C05] Enviare mensaje a la computadora con puerto 3002...
+
+Inicio -> Mensaje Computadora [C15] <-
+--- ID_proceso: 5
+--- Peticion: Soy la computadora 05
+--- Reloj Externo (Ts): 2
+--- Reloj Local Actualizado: 3
+Fin -> Mensaje Computadora [C15] <-
+
+[PADRE] Ordenando a la computadora 10 con el puerto 3001 a realizar un evento...
+
+Inicio -> Mensaje Computadora [C10] <-
+--- ID_proceso: 99
+--- Peticion: ENVIAR
+--- Reloj Externo (Ts): 0
+--- Reloj Local Actualizado: 2
+Fin -> Mensaje Computadora [C10] <-
+
+[C10] Enviare mensaje a la computadora con puerto 3000...
+
+Inicio -> Mensaje Computadora [C05] <-
+--- ID_proceso: 10
+--- Peticion: Soy la computadora 10
+--- Reloj Externo (Ts): 2
+--- Reloj Local Actualizado: 3
+Fin -> Mensaje Computadora [C05] <-
+
+[PADRE] Ordenando a la computadora 15 con el puerto 3002 a realizar un evento...
+
+[C15] -> EVENTO INTERNO <- Ejecutando tarea local...
+
+Inicio -> Mensaje Computadora [C15] <-
+--- ID_proceso: 99
+--- Peticion: LOCAL
+--- Reloj Externo (Ts): 0
+--- Reloj Local Actualizado: 4
+Fin -> Mensaje Computadora [C15] <-
+
+[PADRE] Ordenando a la computadora 05 con el puerto 3000 a realizar un evento...
+
+Inicio -> Mensaje Computadora [C05] <-
+--- ID_proceso: 99
+--- Peticion: ENVIAR
+--- Reloj Externo (Ts): 0
+--- Reloj Local Actualizado: 4
+
+[C05] Enviare mensaje a la computadora con puerto 3002...
+Fin -> Mensaje Computadora [C05] <-
+
+Inicio -> Mensaje Computadora [C15] <-
+--- ID_proceso: 5
+--- Peticion: Soy la computadora 05
+--- Reloj Externo (Ts): 4
+--- Reloj Local Actualizado: 5
+Fin -> Mensaje Computadora [C15] <-
+
+[PADRE] Ordenando a la computadora 05 con el puerto 3000 a realizar un evento...
+
+[C05] -> EVENTO INTERNO <- Ejecutando tarea local...
+
+Inicio -> Mensaje Computadora [C05] <-
+--- ID_proceso: 99
+--- Peticion: LOCAL
+--- Reloj Externo (Ts): 0
+--- Reloj Local Actualizado: 5
+Fin -> Mensaje Computadora [C05] <-
+
+[PADRE] Ordenando a la computadora 15 con el puerto 3002 a realizar un evento...
+
+[C15] -> EVENTO INTERNO <- Ejecutando tarea local...
+
+Inicio -> Mensaje Computadora [C15] <-
+--- ID_proceso: 99
+--- Peticion: LOCAL
+--- Reloj Externo (Ts): 0
+--- Reloj Local Actualizado: 6
+Fin -> Mensaje Computadora [C15] <-
+
+[PADRE] Ordenando a la computadora 10 con el puerto 3001 a realizar un evento...
+
+Inicio -> Mensaje Computadora [C10] <-
+--- ID_proceso: 99
+--- Peticion: ENVIAR
+--- Reloj Externo (Ts): 0
+--- Reloj Local Actualizado: 3
+Fin -> Mensaje Computadora [C10] <-
+
+[C10] Enviare mensaje a la computadora con puerto 3000...
+
+Inicio -> Mensaje Computadora [C05] <-
+--- ID_proceso: 10
+--- Peticion: Soy la computadora 10
+--- Reloj Externo (Ts): 3
+--- Reloj Local Actualizado: 6
+Fin -> Mensaje Computadora [C05] <-
+
+[PADRE] Simulación terminada. Esperando a que la red se estabilice...
+
+=======================================================
+ [PADRE] INICIANDO PROTOCOLO DE APAGADO GLOBAL 
+=======================================================
+
+
+[PADRE] Enviando comando de apagado a puerto 3000...
+
+[C05] Apagando por comando remoto...
+
+Inicio -> Mensaje Computadora [C05] <-
+--- ID_proceso: 99
+--- Peticion: EXIT
+--- Reloj Externo (Ts): 0
+--- Reloj Local Actualizado: 6
+Fin -> Mensaje Computadora [C05] <-
+
+[PADRE] Enviando comando de apagado a puerto 3001...
+
+[C10] Apagando por comando remoto...
+
+Inicio -> Mensaje Computadora [C10] <-
+--- ID_proceso: 99
+--- Peticion: EXIT
+--- Reloj Externo (Ts): 0
+--- Reloj Local Actualizado: 3
+Fin -> Mensaje Computadora [C10] <-
+
+[PADRE] Enviando comando de apagado a puerto 3002...
+
+[C15] Apagando por comando remoto...
+
+Inicio -> Mensaje Computadora [C15] <-
+--- ID_proceso: 99
+--- Peticion: EXIT
+--- Reloj Externo (Ts): 0
+--- Reloj Local Actualizado: 6
+Fin -> Mensaje Computadora [C15] <-
+
+[SISTEMA GLOBAL] Todos los nodos P2P han finalizado exitosamente. Fin del programa.
+\end{lstlisting}

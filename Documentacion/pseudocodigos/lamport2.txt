@@ -1,0 +1,104 @@
+Algoritmo Conexion_P2P
+Constantes y Variables Globales
+Definir PORT ∈ N, PORT <- 0
+Definir local, externo ∈ Mensaje_L
+Definir puertos ∈ Z[NUM_NODOS]
+Definir encendido <- 1
+Definir enviar <- 0
+
+Procedimiento MAYOR(a, b)
+    Si a > b Entonces
+        Salir a
+    Sino
+        Salir b
+    Fin Si
+Fin Procedimiento
+
+Procedimiento CONEXION_P2P(user, dir)
+    Definir thread_id ∈ Hilo
+    CopiarMemoria(puertos, dir, sizeof(puertos))
+    PORT <- dir[user.indice]
+    local.id_proceso <- user.id_proceso
+    local.indice <- user.indice
+    local.reloj <- local.reloj + 1                          ▷ Inicialización del reloj local
+    CrearHilo(thread_id, hilo_escucha, NULL)
+    GenerarSemilla(Tiempo_Actual() XOR ObtenerPID())
+    Mientras encendido Hacer
+        Si enviar = 1 Entonces
+            enviar <- 0
+            local.reloj <- local.reloj + 1                  ▷ REGLA LAMPORT: Avanzar reloj antes de enviar
+            Definir indice_new ∈ Z
+            Repetir
+                indice_new <- Aleatorio() MOD NUM_NODOS
+            Hasta que indice_new ≠ local.indice
+            Escribir("\n[C", local.id_proceso, "] Enviare mensaje a la computadora con puerto ", puertos[indice_new], "...")
+            LimpiarMemoria(local.peticion)
+            FormatearCadena(local.peticion, "Soy la computadora %02d", local.id_proceso)
+            enviar_msj(puertos[indice_new], local)
+        Fin Si
+    Fin Mientras
+    EsperarHilo(thread_id)
+Fin Procedimiento
+
+Procedimiento HILO_ESCUCHA(arg)
+    Definir server_fd, new_socket ∈ Z
+    Definir address ∈ sockaddr_in
+    Definir opt <- 1
+    server_fd <- socket(AF_INET, SOCK_STREAM, 0)
+    setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, opt)
+    address.sin_family <- AF_INET
+    address.sin_addr.s_addr <- INADDR_ANY
+    address.sin_port <- htons(PORT)
+    bind(server_fd, address)
+    listen(server_fd, 3)
+    Escribir("[C", local.id_proceso, "] Escuchando Mensaje_L en puerto ", PORT, "...")
+    Mientras encendido Hacer
+        addrlen <- sizeof(address)
+        new_socket <- accept(server_fd, address, addrlen)
+        Si new_socket < 0 Entonces
+            Romper
+        Fin Si
+        LimpiarMemoria(externo)
+        Leer(new_socket, externo)
+        Si externo.id_proceso = 99 Entonces                     ▷ Mensajes del Padre (Control)
+            Si CompararCadena(externo.peticion, CMD_EX) = 0 Entonces
+                Escribir("\n[C", local.id_proceso, "] Apagando por comando remoto...")
+                encendido <- 0
+            Sino Si CompararCadena(externo.peticion, CMD_EN) = 0 Entonces
+                enviar <- 1
+            Sino Si CompararCadena(externo.peticion, CMD_IN) = 0 Entonces
+                Escribir("\n[C", local.id_proceso, "] -> EVENTO INTERNO <- Ejecutando tarea local...")
+                local.reloj <- local.reloj + 1
+            Fin Si
+        Sino                                                    ▷ Mensajes de otros Nodos P2P
+            local.reloj <- mayor(local.reloj, externo.reloj) + 1    ▷ REGLA LAMPORT: Al recibir
+        Fin Si
+        Escribir("\nInicio -> Mensaje Computadora [C", local.id_proceso, "] <-")
+        Escribir("--- ID_proceso: ", externo.id_proceso)
+        Escribir("--- Peticion: ", externo.peticion)
+        Escribir("--- Reloj Externo (Ts): ", externo.reloj)
+        Escribir("--- Reloj Local Actualizado: ", local.reloj)
+        Escribir("Fin -> Mensaje Computadora [C", local.id_proceso, "] <-\n")
+        Cerrar(new_socket)
+    Fin Mientras
+    Cerrar(server_fd)
+    Salir NULL
+Fin Procedimiento
+
+Procedimiento ENVIAR_MSJ(puerto_destino, datos)
+    Definir sock ∈ Z, sock <- 0
+    Definir serv_addr ∈ sockaddr_in
+    Si (sock <- socket(AF_INET, SOCK_STREAM, 0)) < 0 Entonces
+        Salir
+    Fin Si
+    serv_addr.sin_family <- AF_INET
+    serv_addr.sin_port <- htons(puerto_destino)
+    inet_pton(AF_INET, DIRECTION, serv_addr.sin_addr)
+    Si connect(sock, serv_addr) < 0 Entonces
+        Escribir("Error de conexion")
+        Cerrar(sock)
+        Salir
+    Fin Si
+    Enviar(sock, datos)
+    Cerrar(sock)
+Fin Procedimiento

@@ -1,0 +1,169 @@
+[C05] Escuchando por el puerto 3000...
+[C10] Escuchando por el puerto 3001...
+[C15] Escuchando por el puerto 3002...
+
+=======================================================
+ [PADRE] INICIANDO SIMULACION P2P (RELOJES VECTORIALES)
+=======================================================
+
+[PADRE] Ordenando a la computadora C05 (Puerto 3000) que actúe...
+
+Inicio -> Evento en Computadora [C05] <-
+--- ID del evento: 99 --> PROCESO PADRE
+--- Peticion recibida: ENVIAR
+--- Reloj Externo: [ 0  0  0 ]
+--- Reloj Local:   [ 1  0  0 ]
+Fin -> Evento en Computadora [C05] <-
+
+[C05] Enviare mensaje a la computadora 10 con puerto 3001...
+
+Inicio -> Evento en Computadora [C10] <-
+--- ID del evento: 5 --> NODO VECINO
+--- Peticion recibida: Soy la computadora 05
+--- Reloj Externo: [ 2  0  0 ]
+--- Reloj Local:   [ 2  2  0 ]
+Fin -> Evento en Computadora [C10] <-
+
+[PADRE] Ordenando a la computadora C05 (Puerto 3000) que actúe...
+
+[C05] -> EVENTO INTERNO <- Ejecutando tarea local...
+
+Inicio -> Evento en Computadora [C05] <-
+--- ID del evento: 99 --> PROCESO PADRE
+--- Peticion recibida: LOCAL
+--- Reloj Externo: [ 0  0  0 ]
+--- Reloj Local:   [ 3  0  0 ]
+Fin -> Evento en Computadora [C05] <-
+
+[PADRE] Ordenando a la computadora C15 (Puerto 3002) que actúe...
+
+Inicio -> Evento en Computadora [C15] <-
+--- ID del evento: 99 --> PROCESO PADRE
+--- Peticion recibida: ENVIAR
+--- Reloj Externo: [ 0  0  0 ]
+--- Reloj Local:   [ 0  0  1 ]
+Fin -> Evento en Computadora [C15] <-
+
+[C15] Enviare mensaje a la computadora 05 con puerto 3000...
+
+Inicio -> Evento en Computadora [C05] <-
+--- ID del evento: 15 --> NODO VECINO
+--- Peticion recibida: Soy la computadora 15
+--- Reloj Externo: [ 0  0  2 ]
+--- Reloj Local:   [ 4  0  2 ]
+Fin -> Evento en Computadora [C05] <-
+
+[PADRE] Ordenando a la computadora C15 (Puerto 3002) que actúe...
+
+Inicio -> Evento en Computadora [C15] <-
+--- ID del evento: 99 --> PROCESO PADRE
+--- Peticion recibida: ENVIAR
+--- Reloj Externo: [ 0  0  0 ]
+--- Reloj Local:   [ 0  0  2 ]
+Fin -> Evento en Computadora [C15] <-
+
+[C15] Enviare mensaje a la computadora 10 con puerto 3001...
+
+Inicio -> Evento en Computadora [C10] <-
+--- ID del evento: 15 --> NODO VECINO
+--- Peticion recibida: Soy la computadora 15
+--- Reloj Externo: [ 0  0  3 ]
+--- Reloj Local:   [ 2  3  3 ]
+Fin -> Evento en Computadora [C10] <-
+
+[PADRE] Ordenando a la computadora C15 (Puerto 3002) que actúe...
+
+Inicio -> Evento en Computadora [C15] <-
+--- ID del evento: 99 --> PROCESO PADRE
+--- Peticion recibida: ENVIAR
+--- Reloj Externo: [ 0  0  0 ]
+--- Reloj Local:   [ 0  0  3 ]
+Fin -> Evento en Computadora [C15] <-
+
+[C15] Enviare mensaje a la computadora 10 con puerto 3001...
+
+Inicio -> Evento en Computadora [C10] <-
+--- ID del evento: 15 --> NODO VECINO
+--- Peticion recibida: Soy la computadora 15
+--- Reloj Externo: [ 0  0  4 ]
+--- Reloj Local:   [ 2  4  4 ]
+Fin -> Evento en Computadora [C10] <-
+
+[PADRE] Ordenando a la computadora C15 (Puerto 3002) que actúe...
+
+Inicio -> Evento en Computadora [C15] <-
+--- ID del evento: 99 --> PROCESO PADRE
+--- Peticion recibida: ENVIAR
+--- Reloj Externo: [ 0  0  0 ]
+--- Reloj Local:   [ 0  0  4 ]
+Fin -> Evento en Computadora [C15] <-
+
+[C15] Enviare mensaje a la computadora 10 con puerto 3001...
+
+Inicio -> Evento en Computadora [C10] <-
+--- ID del evento: 15 --> NODO VECINO
+--- Peticion recibida: Soy la computadora 15
+--- Reloj Externo: [ 0  0  5 ]
+--- Reloj Local:   [ 2  5  5 ]
+Fin -> Evento en Computadora [C10] <-
+
+[PADRE] Ordenando a la computadora C05 (Puerto 3000) que actúe...
+
+Inicio -> Evento en Computadora [C05] <-
+--- ID del evento: 99 --> PROCESO PADRE
+--- Peticion recibida: ENVIAR
+--- Reloj Externo: [ 0  0  0 ]
+--- Reloj Local:   [ 4  0  2 ]
+Fin -> Evento en Computadora [C05] <-
+
+[C05] Enviare mensaje a la computadora 15 con puerto 3002...
+
+Inicio -> Evento en Computadora [C15] <-
+--- ID del evento: 5 --> NODO VECINO
+--- Peticion recibida: Soy la computadora 05
+--- Reloj Externo: [ 5  0  2 ]
+--- Reloj Local:   [ 5  0  6 ]
+Fin -> Evento en Computadora [C15] <-
+
+[PADRE] Simulación terminada. Esperando a que la red se estabilice...
+
+=======================================================
+ [PADRE] INICIANDO PROTOCOLO DE APAGADO GLOBAL 
+=======================================================
+
+[PADRE] Enviando comando de apagado a puerto 3000...
+
+[C05] Apagando por comando remoto...
+
+
+Inicio -> Evento en Computadora [C05] <-
+--- ID del evento: 99 --> PROCESO PADRE
+--- Peticion recibida: EXIT
+--- Reloj Externo: [ 0  0  0 ]
+--- Reloj Local:   [ 5  0  2 ]
+Fin -> Evento en Computadora [C05] <-
+[PADRE] Enviando comando de apagado a puerto 3001...
+
+[C10] Apagando por comando remoto...
+
+
+Inicio -> Evento en Computadora [C10] <-
+--- ID del evento: 99 --> PROCESO PADRE
+--- Peticion recibida: EXIT
+--- Reloj Externo: [ 0  0  0 ]
+--- Reloj Local:   [ 2  5  5 ]
+Fin -> Evento en Computadora [C10] <-
+[PADRE] Enviando comando de apagado a puerto 3002...
+
+[C15] Apagando por comando remoto...
+
+
+Inicio -> Evento en Computadora [C15] <-
+--- ID del evento: 99 --> PROCESO PADRE
+--- Peticion recibida: EXIT
+--- Reloj Externo: [ 0  0  0 ]
+--- Reloj Local:   [ 5  0  6 ]
+Fin -> Evento en Computadora [C15] <-
+
+[SISTEMA GLOBAL] Todos los nodos P2P han finalizado exitosamente.
+----> Simulacion Terminada.

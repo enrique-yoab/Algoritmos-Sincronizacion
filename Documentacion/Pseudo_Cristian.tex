@@ -1,0 +1,104 @@
+\subsubsection{Pseudocódigo}
+
+\begin{tcolorbox}[colback=white, colframe=azul_unam, title=Pseudocódigo: sinc\_cristian.c, breakable]
+
+\textbf{Algoritmo} Sincronizacion\_Cristian
+
+% ===================== CONSTANTES Y ESTRUCTURAS =====================
+
+\textbf{Constantes y Estructuras (header.h)}
+
+\begin{algorithmic}[1]
+\State \textbf{Definir} $PUERTO \gets 3000$
+\State \textbf{Definir} $RTT\_MAX\_MS \gets 600$
+\State \textbf{Definir} $DIR\_SERV \gets \text{"127.0.0.1"}$
+
+\vspace{0.2cm}
+\State \textbf{Estructura} $tiempo$
+\State \quad $horas, minutos, segundos, milisegundos \in \mathbb{Z}$
+\State \textbf{FinEstructura}
+
+\vspace{0.2cm}
+\State \textbf{Estructura} $Mensaje\_C$
+\State \quad $id\_proceso \in \mathbb{Z}$
+\State \quad $peticion \in \text{Alfabeto}[200]$
+\State \quad $tiempo\_envio, tiempo\_servidor, tiempo\_respuesta \in tiempo$
+\State \textbf{FinEstructura}
+\end{algorithmic}
+
+\vspace{0.3cm}
+
+% ===================== FUNCIONES AUXILIARES =====================
+\textbf{Funciones Auxiliares de Tiempo}
+\begin{algorithmic}[1]
+\Procedure{capturar\_tiempo}{t}
+    \State Leer reloj físico del sistema (\texttt{CLOCK\_REALTIME})
+    \State Guardar hora actual en estructura $t$
+\EndProcedure
+
+\Statex
+\Procedure{convertion\_ms}{t}
+    \State \Return Tiempo transformado a milisegundos totales ($int64$)
+\EndProcedure
+\end{algorithmic}
+
+\vspace{0.3cm}
+
+% ===================== SERVIDOR =====================
+\textbf{Lógica del Servidor Maestro}
+\begin{algorithmic}[1]
+\Procedure{ejecutar\_servidor\_C}{}
+    \State \textbf{Definir} $socket \gets \text{socket}(AF\_INET, SOCK\_DGRAM)$ \Comment{Protocolo UDP}
+    \State $\text{bind}(socket, PUERTO)$
+    
+    \While{Verdadero}
+        \State $msj \gets \text{RecibirDatagrama}(socket, cliente\_ip)$
+        
+        \If{CompararCadena$(msj.peticion, \text{"EXIT"}) = 0$}
+            \State \textbf{Romper} \Comment{Apaga el servidor}
+        \ElsIf{CompararCadena$(msj.peticion, \text{"ACTUALIZAR"}) = 0$}
+            \State $\text{capturar\_tiempo}(msj.tiempo\_servidor)$ \Comment{Captura $T_s$}
+            \State Dormir aleatoriamente para simular latencia de procesamiento
+            \State CopiarCadena$(msj.peticion, \text{"OK"})$
+            \State $\text{EnviarDatagrama}(socket, msj, cliente\_ip)$ \Comment{Devuelve estampa}
+        \EndIf
+    \EndWhile
+    
+    \State $\text{Cerrar}(socket)$
+\EndProcedure
+\end{algorithmic}
+
+\vspace{0.3cm}
+
+% ===================== CLIENTE =====================
+\textbf{Lógica del Cliente}
+\begin{algorithmic}[1]
+\Procedure{ejecutar\_cliente\_C}{indice}
+    \State \textbf{Definir} $socket \gets \text{socket}(AF\_INET, SOCK\_DGRAM)$
+    
+    \Repeat
+        \State CopiarCadena$(msj.peticion, \text{"ACTUALIZAR"})$
+        \State $msj.id\_proceso \gets ObtenerPID()$
+        
+        \State $\text{capturar\_tiempo}(msj.tiempo\_envio)$ \Comment{Paso 1: Captura $T_0$}
+        \State $\text{EnviarDatagrama}(socket, msj, DIR\_SERV)$
+        
+        \State $\text{RecibirDatagrama}(socket, msj)$ \Comment{Paso 2: Recibe $T_s$ dentro de $msj$}
+        \State $\text{capturar\_tiempo}(msj.tiempo\_respuesta)$ \Comment{Paso 3: Captura $T_1$}
+        
+        \State $t0 \gets \text{convertion\_ms}(msj.tiempo\_envio)$
+        \State $t1 \gets \text{convertion\_ms}(msj.tiempo\_respuesta)$
+        \State $rango \gets t1 - t0$ \Comment{Cálculo del RTT}
+        
+    \Until{$rango \leq RTT\_MAX\_MS$} \Comment{Filtro contra redes congestionadas}
+
+    \State $ts \gets \text{convertion\_ms}(msj.tiempo\_servidor)$
+    \State $latencia \gets rango / 2$
+    \State $hora\_corregida \gets ts + latencia$ \Comment{Aplicación Fórmula de Cristian}
+    
+    \State Reconstruir $hora\_corregida$ a formato $H:M:S:ms$
+    \State Imprimir hora ajustada
+    \State $\text{Cerrar}(socket)$
+\EndProcedure
+\end{algorithmic}
+\end{tcolorbox}

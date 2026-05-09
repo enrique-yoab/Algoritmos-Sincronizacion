@@ -1,0 +1,173 @@
+\subsection{Problema 1: Algoritmo de Sincronización de Lamport.}
+
+El objetivo de esta implementación es garantizar el ordenamiento causal de eventos en un sistema distribuido mediante el uso de \textbf{relojes lógicos escalares}.
+
+\subsubsection{Lógica de Actualización del Reloj.}
+En el archivo \texttt{cnx\_lamport.c}, se implementan las reglas fundamentales de Lamport para ajustar el tiempo lógico en cada nodo:
+
+\begin{itemize}
+    \item \textbf{Evento de Envío:} Antes de transmitir un mensaje, el proceso incrementa su reloj local.
+    \item \textbf{Evento de Recepción:} Al recibir un mensaje externo, el nodo ajusta su reloj utilizando el valor máximo entre su tiempo actual y el tiempo recibido ($T_s$), sumando una unidad para representar el evento de recepción:
+    \[ L(e) = \max(\text{reloj\_local}, \text{reloj\_externo}) + 1 \]
+\end{itemize}
+
+Por otro lado, no podemos ignorar que el propio proceso generé eventos dentro de si mismo por lo que puede incrementar su reloj, ya se temporizadores, revisiones, protocolos, etc.
+
+\subsubsection{Arquitectura del Sistema.}
+La solución utiliza una arquitectura \textbf{descentralizada} y \textbf{multihilo}:
+\begin{enumerate}
+    \item \textbf{Hilo de Escucha (\texttt{hilo\_escucha}):} Actúa como servidor permanente utilizando sockets (TCP) para recibir estructuras de tipo \texttt{Mensaje\_L}.
+    \item \textbf{Hilo de Envío:} Gestiona la salida de mensajes hacia otros nodos de la red de forma aleatoria, simulando la interacción entre procesos independientes.
+    \item \textbf{Proceso Gestor (Hijo):} Se encarga de generar \texttt{N\_NODOS} que son los clientes. (\texttt{Procesos Nietos})
+    \item \textbf{Proceso Maestro (Padre):} Coordina la simulación inyectando eventos de control (comando \texttt{ENVIAR} o \texttt{LOCAL}) sin alterar el tiempo lógico global, ya que actúa como un observador externo (ID 99).
+\end{enumerate}
+
+\subsubsection{Estructura de Datos.}
+Para la comunicación, se definió la estructura \texttt{Mensaje\_L} en el archivo de cabecera \texttt{lamport\_p2p.h}:
+\begin{lstlisting}[style=estiloC]
+typedef struct {
+    int  id_proceso;   // Id del proceso que envia
+    int  indice;       // Indice en la lista de puertos
+    int  reloj;        // Reloj logico escalar
+    char peticion[200]; // Mensaje o comando
+} Mensaje_L;
+\end{lstlisting}
+
+\subsubsection{Archivo Principal. (\texttt{sinc\_lamport.c})}
+
+Para comprender a detalle el funcionamiento de la simulación, debemos iniciar con el análisis del archivo principal, el cual coordina la ejecución global del sistema. 
+
+Este archivo incluye las librerías estándar y los archivos de cabecera necesarios para su operación. Define dos variables globales fundamentales: una estructura de tipo \texttt{Mensaje\_L}, utilizada para inyectar instrucciones a los nodos de manera que interactúen entre sí sin modificar sus relojes lógicos (permitiendo que el nodo interprete el comando como una decisión ``propia''), y un arreglo de enteros cuyo tamaño corresponde a la cantidad de nodos a crear, el cual permite gestionar los números de puerto que se asignarán a cada proceso.
+
+\begin{lstlisting}[style=estiloC]
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <sys/wait.h>
+#include <time.h>
+#include "lamport_p2p.h"
+
+Mensaje_L instancia;
+int directorio[NUM_NODOS];     
+\end{lstlisting}
+
+La primera sección del condicional \texttt{fork()} gestiona la lógica del proceso hijo, cuya responsabilidad es engendrar los $n$ procesos nietos que conforman los nodos de la red. Cada uno de estos procesos nietos se inicializa con atributos específicos: un identificador único (\texttt{ID}), su índice correspondiente dentro del arreglo de puertos, el reloj lógico inicializado en cero y un buffer de peticiones limpio. Asimismo, se hereda el directorio global a su espacio de memoria, lo que garantiza que cada nodo pueda identificar y comunicarse con los demás elementos de la red una vez establecidos.
+
+\begin{lstlisting}[style=estiloC]
+int main()
+{
+    // Variable para guardar la ejecucion de fork y saber si es correcto.
+    pid_t pid = fork();
+    if(pid < 0) exit(1);
+
+    // Proceso hijo creara los n nodos clientes con conexion peer to peer
+    if(pid == 0)
+    {
+        // Llenamos el directorio que almacena los puertos de cada nodo
+        for(int i = 0; i < NUM_NODOS; i++) directorio[i] = 3000 + i;
+
+        // For para crear N nodos cada quien con su respectivo puerto
+        for(int i = 0; i < NUM_NODOS; i++)
+        {
+            // El proceso nieto rellena el mensaje que sera almacenado en la maquina p2p
+            if(fork() == 0)
+            {
+                instancia.id_proceso = 5 * (i + 1);
+                instancia.indice = i;
+                instancia.reloj = 0;
+                memset(instancia.peticion, 0, sizeof(instancia.peticion));
+                
+                // Se invoca la funcion de red con la configuracion local y el directorio
+                conexion_p2p(instancia, directorio);
+                exit(0);
+            }
+        }
+        // Espera sincronizada de los procesos nietos
+        for(int i = 0; i < NUM_NODOS; i++) wait(NULL);
+        exit(0);
+    }
+\end{lstlisting}
+
+El proceso padre actúa como el controlador maestro de la simulación, ejerciendo su voluntad para inyectar eventos de manera aleatoria en los nodos de la red. Mientras que los nodos permanecen en un estado de escucha activa para recibir, interpretar y procesar datagramas —actualizando su reloj lógico y retornando a la inactividad según sea necesario—, el padre dinamiza el sistema enviando instrucciones externas.
+
+Para lograr esto, se utiliza una estructura \texttt{Mensaje\_L} identificada con el \texttt{ID 99}; este valor permite que los nodos receptores reconozcan al proceso padre y ejecuten la acción solicitada sin alterar su propio reloj lógico. A través de un ciclo \texttt{for}, el sistema inyecta $n$ eventos aleatorios (locales o de envío), emulando la interacción real de un sistema distribuido. Por otra parte es fundamental destacar que, antes de iniciar la interacción, el proceso padre debe esperar un tiempo de estabilización (en este caso, 1 segundo para 3 nodos). Este margen asegura que todos los nodos P2P hayan completado su inicialización y estén listos para aceptar conexiones. Cabe mencionar que, si se incrementara el número de nodos, este tiempo de espera debería aumentarse proporcionalmente para garantizar la integridad de la red. Finalmente, una vez cumplida la cuota de eventos, el padre ejecuta un protocolo de apagado global mediante el comando \texttt{EXIT}, garantizando que todos los procesos finalicen correctamente y evitando la permanencia de procesos ``zombies'' en el sistema operativo.
+\begin{lstlisting}[style=estiloC]
+    // El padre inyecta comandos de evento y apagado a los nodos
+    else
+    {
+        srand(time(NULL) ^ getpid() << 16);
+        sleep(1); // Tiempo de espera para estabilizacion de la red
+        
+        printf("\n=======================================================\n");
+        printf(" [PADRE] INICIANDO SIMULACION P2P (RELOJES DE LAMPORT) \n");
+        printf("=======================================================\n");
+
+        Mensaje_L inyeccion;
+        for(int i = 0; i < NUM_EVENT0; i++) 
+        {
+            int indice_elegido = rand() % NUM_NODOS;
+            int puerto_elegido = 3000 + indice_elegido;
+            memset(&inyeccion, 0, sizeof(Mensaje_L));
+            
+            inyeccion.id_proceso = 99; // ID de control del padre
+            inyeccion.reloj = 0;       // El padre no altera el tiempo logico
+            
+            // Seleccion aleatoria del tipo de evento
+            if(rand() % 2 == 1) strcpy(inyeccion.peticion, CMD_EN);
+            else strcpy(inyeccion.peticion, CMD_IN); 
+
+            enviar_msj(puerto_elegido, inyeccion);
+            usleep(100000);
+        }
+
+        printf("\n [PADRE] INICIANDO PROTOCOLO DE APAGADO GLOBAL \n");
+        for(int i = 0; i < NUM_NODOS; i++) 
+        {
+            memset(&inyeccion, 0, sizeof(Mensaje_L));
+            inyeccion.id_proceso = 99; 
+            strcpy(inyeccion.peticion, CMD_EX); 
+            enviar_msj(3000 + i, inyeccion);
+            usleep(50000); 
+        }
+
+        wait(NULL); 
+        printf("\n[SISTEMA GLOBAL] Nodos finalizados exitosamente.\n");
+    }
+    return 0;
+}
+\end{lstlisting}
+
+\begin{itemize}
+    \item \textbf{Archivo de Cabecera (\texttt{lamport\_p2p.h})}
+\end{itemize}
+
+Este archivo de cabecera es fundamental para la cohesión del sistema, ya que define la estructura de datos y las constantes globales necesarias para el funcionamiento de la red. Como se puede observar, incluye las declaraciones de funciones que no están implementadas en el archivo principal; esto se debe a que la lógica de la conexión P2P y el protocolo de envío de mensajes se encuentran encapsulados en un módulo independiente. Esta modularización permite la reutilización de código y mantiene una separación clara entre la gestión de procesos y la comunicación por sockets.
+
+\begin{lstlisting}[style=estiloC]
+#ifndef LAMPORT_P2P_H
+#define LAMPORT_P2P_H
+
+#define NUM_NODOS 3     // Numero de computadoras a crear
+#define NUM_EVENT0 7    // Numero de eventos totales
+#define CMD_EX "EXIT"   // Comando de apagado
+#define CMD_EN "ENVIAR" // Comando para que la computadora mande un mensaje
+#define CMD_IN "LOCAL"  // Comando de para que realice un evento interno
+#define DIRECTION "127.0.0.1" // Direccion ip a la que se comunica
+
+// ------- Estructura del mensaje de Lamport ------------
+typedef struct {
+    int  id_proceso;       // Id del proceso que envia el mensaje
+    int  indice;           // El indice al que corresponde
+    int  reloj;            // El Reloj de Lamport escalar (un solo contador)
+    char peticion[200];    // Texto del mensaje a enviar
+} Mensaje_L;
+
+// --------- Declaraciones ----------------
+int mayor(int a, int b);
+void conexion_p2p(Mensaje_L user, int dir[]);
+void enviar_msj(int puerto_destino, Mensaje_L datos);
+void *hilo_escucha(void *arg);
+
+#endif
+\end{lstlisting}

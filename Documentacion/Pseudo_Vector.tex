@@ -1,0 +1,304 @@
+\subsubsection{Pseudocódigo.}
+
+\begin{tcolorbox}[colback=white, colframe=azul_unam, title=Pseudocódigo: sinc\_vectoriales.c (P2P), breakable]
+
+\textbf{Algoritmo} Sincronizacion\_Vectorial
+
+% ===================== DEFINICIONES Y ESTRUCTURAS =====================
+
+\textbf{Constantes y Estructuras (vector.h)}
+
+\begin{algorithmic}[1]
+
+\State \textbf{Definir} $NUM\_NODOS \gets 3$
+\State \textbf{Definir} $NUM\_EVENTO \gets 7$
+\State \textbf{Definir} $CMD\_EX \gets$ "EXIT"
+\State \textbf{Definir} $CMD\_EN \gets$ "ENVIAR"
+\State \textbf{Definir} $CMD\_IN \gets$ "LOCAL"
+\State \textbf{Definir} $DIRECTION \gets$ "127.0.0.1"
+
+\vspace{0.2cm}
+
+\State \textbf{Estructura} $Mensaje\_V$
+\State \quad $id\_proceso \in \mathbb{Z}$
+\State \quad $indice \in \mathbb{Z}$
+\State \quad $vector \in \mathbb{Z}[NUM\_NODOS]$ \Comment{El mapa causal completo}
+\State \quad $peticion \in \text{Alfabeto}[200]$
+\State \textbf{FinEstructura}
+
+\end{algorithmic}
+
+\vspace{0.3cm}
+
+% ===================== VARIABLES GLOBALES =====================
+
+\textbf{Variables Globales}
+
+\begin{algorithmic}[1]
+\State \textbf{Definir} $instancia \in Mensaje\_V$
+\State \textbf{Definir} $directorio \in \mathbb{Z}[NUM\_NODOS]$
+\end{algorithmic}
+
+\vspace{0.3cm}
+
+% ===================== MAIN =====================
+\begin{algorithmic}[1]
+    
+\Procedure{main}{}
+
+\State $pid \gets fork()$
+
+\If{$pid < 0$}
+    \State \textbf{Salir}(1)
+\EndIf
+
+% ===================== PROCESO HIJO / NIETOS =====================
+\If{$pid = 0$} \Comment{Proceso hijo creador de nodos P2P}
+
+    \For{$i \gets 0$ \textbf{hasta} $NUM\_NODOS - 1$}
+        \State $directorio[i] \gets 3000 + i$
+    \EndFor
+
+    \For{$i \gets 0$ \textbf{hasta} $NUM\_NODOS - 1$}
+        
+        \If{$fork() = 0$} \Comment{Proceso nieto (Nodo P2P individual)}
+            
+            \State $instancia.id\_proceso \gets 5 * (i + 1)$
+            \State $instancia.indice \gets i$
+            \State LimpiarMemoria$(instancia.vector)$ \Comment{Vector inicializado en 0}
+            \State LimpiarMemoria$(instancia.peticion)$
+            
+            \State conexion\_p2p$(instancia, directorio)$
+            
+            \State \textbf{Salir}(0)
+            
+        \EndIf
+        
+    \EndFor
+
+    \For{$i \gets 0$ \textbf{hasta} $NUM\_NODOS - 1$}
+        \State EsperarHijo$()$
+    \EndFor
+
+    \State \textbf{Salir}(0)
+
+% ===================== PROCESO PADRE =====================
+\Else \Comment{Proceso padre (Simulador de Caos)}
+
+    \State GenerarSemilla$(TiempoActual() \text{ XOR } (ObtenerPID() \ll 16))$
+    \State DormirSegundos$(1)$
+    
+    \State Escribir("=========================================")
+    \State Escribir(" [PADRE] INICIANDO SIMULACIÓN P2P (RELOJES VECTORIALES) ")
+    \State Escribir("=========================================")
+    
+    \State \textbf{Definir} $inyeccion \in Mensaje\_V$
+    
+    \For{$i \gets 0$ \textbf{hasta} $NUM\_EVENTO - 1$}
+        
+        \State $indice\_elegido \gets Aleatorio() \text{ MOD } NUM\_NODOS$
+        \State $puerto\_elegido \gets 3000 + indice\_elegido$
+        
+        \State LimpiarMemoria$(inyeccion)$ \Comment{Garantiza vector [0,0,0]}
+        \State $inyeccion.id\_proceso \gets 99$
+        
+        \If{$(Aleatorio() \text{ MOD } 2) = 1$}
+            \State CopiarCadena$(inyeccion.peticion, CMD\_EN)$
+        \Else
+            \State CopiarCadena$(inyeccion.peticion, CMD\_IN)$
+        \EndIf
+        
+        \State Escribir("\textbackslash n[PADRE] Ordenando a la computadora ", $(indice\_elegido + 1) * 5$, " que actue...")
+        
+        \State enviar\_msj$(puerto\_elegido, inyeccion)$
+        \State DormirMicrosegundos$(100000)$
+        
+    \EndFor
+
+    \State Escribir("\textbackslash n[PADRE] Simulación terminada. Esperando a que la red se estabilice...")
+    \State DormirSegundos$(1)$
+    
+    \State Escribir("\textbackslash n======================================")
+    \State Escribir(" [PADRE] INICIANDO PROTOCOLO DE APAGADO GLOBAL ")
+    \State Escribir("========================================\textbackslash n")
+
+    \For{$i \gets 0$ \textbf{hasta} $NUM\_NODOS - 1$}
+        
+        \State LimpiarMemoria$(inyeccion)$
+        \State $inyeccion.id\_proceso \gets 99$
+        \State CopiarCadena$(inyeccion.peticion, CMD\_EX)$
+         
+        \State Escribir("\textbackslash n[PADRE] Enviando comando de apagado a puerto ", $3000 + i$, "...")
+        \State enviar\_msj$(3000 + i, inyeccion)$
+        \State DormirMicrosegundos$(50000)$
+        
+    \EndFor
+
+    \State EsperarHijo$()$
+    \State Escribir("\textbackslash n[SISTEMA GLOBAL] Todos los nodos P2P han finalizado exitosamente.")
+
+\EndIf
+
+\State \Return 0
+
+\EndProcedure
+
+\end{algorithmic}
+\end{tcolorbox}
+
+\begin{tcolorbox}[colback=white, colframe=azul_unam, title=Pseudocódigo: cnx\_vectores.c (Conexión P2P Vectorial), breakable]
+
+\textbf{Algoritmo} Conexion\_P2P\_Vectorial
+
+% ===================== VARIABLES GLOBALES =====================
+
+\textbf{Constantes y Variables Globales}
+
+\begin{algorithmic}[1]
+
+\State \textbf{Definir} $PORT \in \mathbb{N}, PORT \gets 0$
+\State \textbf{Definir} $local, externo \in Mensaje\_V$
+\State \textbf{Definir} $puertos \in \mathbb{Z}[NUM\_NODOS]$
+\State \textbf{Definir} $encendido \gets 1$
+\State \textbf{Definir} $enviar \gets 0$
+
+\vspace{0.2cm}
+
+% ===================== FUNCIÓN MAYOR =====================
+
+\Procedure{mayor}{a, b}
+    \If{$a > b$}
+        \State \Return $a$
+    \Else
+        \State \Return $b$
+    \EndIf
+\EndProcedure
+
+\vspace{0.3cm}
+
+% ===================== CONEXION P2P =====================
+
+\Procedure{conexion\_p2p}{user, dir}
+
+    \State \textbf{Definir} $thread\_id \in \text{Hilo}$
+    
+    \State CopiarMemoria$(puertos, dir, \text{sizeof}(puertos))$
+    \State $PORT \gets dir[user.indice]$
+    \State $local.id\_proceso \gets user.id\_proceso$
+    \State $local.indice \gets user.indice$
+    \State $local.vector[local.indice] \gets local.vector[local.indice] + 1$ \Comment{Evento 1: Encendido del proceso}
+
+    \State CrearHilo$(thread\_id, \text{hilo\_escucha}, NULL)$
+    
+    \State GenerarSemilla$(\text{Tiempo\_Actual}() \text{ XOR } ObtenerPID())$
+
+    \While{$encendido$}
+    
+        \If{$enviar = 1$}
+            \State $enviar \gets 0$
+            
+            \State $local.vector[local.indice] \gets local.vector[local.indice] + 1$ \Comment{REGLA FIDGE-MATTERN: Evento interno}
+            
+            \State \textbf{Definir} $indice\_new \in \mathbb{Z}$
+            \Repeat
+                \State $indice\_new \gets Aleatorio() \text{ MOD } NUM\_NODOS$
+            \Until{$indice\_new \neq local.indice$} \Comment{Evita hacerse eco a sí mismo}
+            
+            \State Escribir("\textbackslash n[C", $local.id\_proceso$, "] Enviare mensaje a la computadora con puerto ", $puertos[indice\_new]$, "...")
+            
+            \State LimpiarMemoria$(local.peticion)$
+            \State FormatearCadena$(local.peticion, \text{"Soy la computadora \%02d"}, local.id\_proceso)$
+            
+            \State enviar\_msj$(puertos[indice\_new], local)$
+        \EndIf
+        
+        \State DormirMicrosegundos$(50000)$
+        
+    \EndWhile
+
+    \State EsperarHilo$(thread\_id)$
+
+\EndProcedure
+
+\vspace{0.3cm}
+
+% ===================== HILO ESCUCHA (SERVIDOR TCP) =====================
+
+\Procedure{hilo\_escucha}{arg}
+
+    \State \textbf{Definir} $server\_fd, new\_socket \in \mathbb{Z}$
+    \State \textbf{Definir} $address \in sockaddr\_in$
+    \State \textbf{Definir} $opt \gets 1$
+
+    \State $server\_fd \gets \text{socket}(AF\_INET, SOCK\_STREAM, 0)$
+    \State \text{setsockopt}(server\_fd, SOL\_SOCKET, SO\_REUSEADDR, opt)
+
+    \State $address.sin\_family \gets AF\_INET$
+    \State $address.sin\_addr.s\_addr \gets INADDR\_ANY$
+    \State $address.sin\_port \gets htons(PORT)$
+
+    \State \text{bind}(server\_fd, address)
+    \State \text{listen}(server\_fd, 3)
+
+    \While{$encendido$}
+        
+        \State $addrlen \gets \text{sizeof}(address)$
+        \State $new\_socket \gets \text{accept}(server\_fd, address, addrlen)$
+
+        \If{$new\_socket < 0$}
+            \State \textbf{Romper}
+        \EndIf
+
+        \State LimpiarMemoria$(externo)$
+        \State Leer$(new\_socket, externo)$
+
+        \If{$externo.id\_proceso = 99$} \Comment{Mensajes del Padre (Control)}
+            
+            \If{CompararCadena$(externo.peticion, CMD\_EX) = 0$}
+                \State $encendido \gets 0$
+            \ElsIf{CompararCadena$(externo.peticion, CMD\_EN) = 0$}
+                \State $enviar \gets 1$
+            \ElsIf{CompararCadena$(externo.peticion, CMD\_IN) = 0$}
+                \State $local.vector[local.indice] \gets local.vector[local.indice] + 1$
+            \EndIf
+            
+        \Else \Comment{Plano de Datos (Red P2P Real)}
+            
+            \For{$i \gets 0$ \textbf{hasta} $NUM\_NODOS - 1$}
+                \State $local.vector[i] \gets mayor(local.vector[i], externo.vector[i])$ \Comment{REGLA FIDGE-MATTERN: Actualizar componentes}
+            \EndFor
+            
+            \State $local.vector[local.indice] \gets local.vector[local.indice] + 1$ \Comment{Incremento por recepción}
+            
+        \EndIf
+
+        \State Escribir("\textbackslash nInicio -> Evento en Computadora [C", $local.id\_proceso$, "] <-")
+        \State Escribir("--- ID del evento: ", $externo.id\_proceso$)
+        \State Escribir("--- Peticion: ", $externo.peticion$)
+        \State imprimeV$(externo.vector)$
+        \State imprimeV$(local.vector)$
+        \State Escribir("Fin -> Evento en Computadora [C", $local.id\_proceso$, "] <-\textbackslash n")
+
+        \State Cerrar$(new\_socket)$
+
+    \EndWhile
+
+    \State Cerrar$(server\_fd)$
+    \State \Return NULL
+
+\EndProcedure
+
+\vspace{0.3cm}
+
+% ===================== IMPRIMIR VECTOR =====================
+
+\Procedure{imprimeV}{arr}
+    \State EscribirSinSalto("[")
+    \For{$i \gets 0$ \textbf{hasta} $NUM\_NODOS - 1$}
+        \State EscribirSinSalto(" ", $arr[i]$, " ")
+    \EndFor
+    \State Escribir("]")
+\EndProcedure
+
+\end{algorithmic}
+\end{tcolorbox}

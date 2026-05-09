@@ -1,0 +1,393 @@
+\subsection{Problema 2: Algoritmo de Sincronización Vectorial}
+
+El objetivo de esta implementación es desarrollar el algoritmo de \textbf{Fidge-Mattern}, comúnmente conocido como relojes vectoriales. A diferencia del método escalar, este algoritmo permite capturar relaciones de causalidad de manera precisa, proporcionando a cada proceso una visión global del avance temporal de todos los integrantes de la red distribuida.
+
+\subsubsection{Lógica de Actualización de Reloj Vectorial}
+
+En el archivo \texttt{cnx\_vectores.c} se implementa la lógica de sincronización vectorial. La principal innovación de este enfoque radica en que cada proceso, en lugar de gestionar un único contador, mantiene un arreglo (vector) de tamaño $n$, donde cada posición $i$ representa el conocimiento del proceso sobre el reloj del nodo $j$. 
+
+Al interactuar con otros nodos, el proceso no envía una estampa de tiempo aislada, sino su vector completo. Esto permite que el nodo receptor actualice su estado interno comparando cada componente de su vector con el recibido, tomando el valor máximo en cada posición:
+\[ V_i[j] = \max(V_i[j], V_{mensaje}[j]) \quad \forall j \in \{1, \dots, n\} \]
+
+Finalmente, para representar el evento de recepción o cualquier evento local, el proceso incrementa únicamente su propia posición en el vector ($V_i[i]$), manteniendo así la trazabilidad causal de sus acciones.
+
+\begin{itemize}
+    \item \textbf{Causalidad:} Permite identificar si un evento $a$ ocurrió antes que $b$, o si son independientes.
+    \item \textbf{Estructura:} El vector de enteros actúa como la memoria histórica de las interacciones del nodo.
+\end{itemize}
+
+\subsubsection{Arquitectura del Sistema}
+
+La arquitectura descentralizada y multihilo diseñada para el algoritmo de Lamport se mantiene como base estructural para esta implementación. El sistema continúa operando mediante un proceso padre que orquesta la simulación y nodos P2P (con roles duales de cliente y servidor) que interactúan a través de sockets TCP.
+
+La diferencia fundamental radica en la estructura de control para el seguimiento del tiempo lógico. Para soportar la causalidad, se realizaron adaptaciones clave en los componentes del sistema:
+
+\begin{itemize}
+    \item \textbf{Estructura de Datos (\texttt{vector.h}):} Se reemplaza el reloj escalar por un arreglo de enteros (\texttt{int vector[NUM\_NODOS]}). Esto permite que, en cada transmisión, el nodo emisor adjunte su ``mapa causal'' completo al mensaje.
+    \item \textbf{Gestor P2P (\texttt{cnx\_vectores.c}):} Las funciones de comunicación, especialmente el \texttt{hilo\_escucha}, fueron modificadas. Ahora, en lugar de una simple comparación de enteros, el sistema itera sobre los vectores recibidos para aplicar la métrica de Fidge-Mattern índice por índice. Además, se añadió una función utilitaria (\texttt{imprimeV}) para visualizar el estado del vector de forma clara en la terminal.
+    \item \textbf{Simulador de Red (\texttt{sinc\_vectoriales.c}):} El proceso de instanciación (mediante \texttt{fork}) se adaptó para inicializar explícitamente todo el arreglo vectorial en ceros utilizando \texttt{memset}, garantizando un estado base limpio antes de comenzar la inyección de eventos aleatorios.
+\end{itemize}
+
+\subsubsection{Estructura de Datos.}
+Para la comunicación, se corrige la estructura del mensaje \texttt{Mensaje\_L} a \texttt{Mensaje\_V} en el archivo de cabecera \texttt{vector.h}
+
+\begin{lstlisting}[style=estiloC]
+typedef struct {
+    int  id_proceso;          // ID del proceso que envia el mensaje
+    int  indice;              // Posición de este proceso dentro del arreglo vectorial
+    int  vector[NUM_NODOS];   // El mapa causal completo: [ C0, C1, C2 ]
+    char peticion[200];       // Texto del mensaje a enviar
+} Mensaje_V;
+\end{lstlisting}
+
+\subsubsection{Archivo Principal. (\texttt{sinc\_vectoriales.c})}
+
+Este archivo retoma la arquitectura de gestión de procesos empleada en la implementación de Lamport, adaptándola a la naturaleza multidimensional de los relojes vectoriales. La lógica principal reside en que, en lugar de un único contador, el sistema gestiona un vector de $N$ componentes que representa el conocimiento temporal de cada nodo sobre el resto de la red. Esta estructura se transmite íntegramente en cada evento de envío, permitiendo que el receptor compare su estado local con el recibido para determinar relaciones de causalidad y concurrencia.
+
+La ejecución se divide en tres niveles jerárquicos mediante el uso de \texttt{fork()}:
+
+\begin{enumerate}
+    \item \textbf{Proceso Padre (Simulador de Caos):} Actúa como el plano de control externo. Su función es inyectar eventos aleatorios (internos o de envío) y coordinar el apagado global. Utiliza el \texttt{ID 99} para que sus mensajes no alteren los relojes lógicos de los nodos, permitiendo una simulación limpia.
+    \item \textbf{Proceso Hijo (Coordinador):} Es el encargado de levantar la infraestructura de red, definiendo la agenda global de puertos (\texttt{directorio}) y supervisando el ciclo de vida de los nodos.
+    \item \textbf{Procesos Nietos (Nodos P2P):} Representan los nodos reales de la red. Cada uno inicializa su vector en cero mediante \texttt{memset} y comienza su ejecución invocando a \texttt{conexion\_p2p}.
+\end{enumerate}
+
+\begin{lstlisting}[style=estiloC]
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <sys/wait.h>
+#include <time.h>
+#include "vector.h"
+
+Mensaje_V instancia;
+int directorio[NUM_NODOS];     // Agenda global de la red
+
+int main()
+{
+    pid_t pid = fork();
+    if(pid < 0) exit(1);
+
+    // PROCESO HIJO (COORDINADOR): Levanta la infraestructura de red P2P
+    if(pid == 0)
+    {
+        for(int i = 0; i < NUM_NODOS; i++) directorio[i] = 3000 + i;
+        fflush(stdout);
+        
+        for(int i = 0; i < NUM_NODOS; i++)
+        {
+            if(fork() == 0)
+            {
+                // Configuración de fábrica del nodo
+                instancia.id_proceso = 5 * (i + 1);
+                instancia.indice = i;
+                memset(instancia.vector, 0, sizeof(instancia.vector));
+                memset(instancia.peticion, 0, sizeof(instancia.peticion));
+                
+                conexion_p2p(instancia, directorio);
+                exit(0);
+            }
+        }
+        for(int i = 0; i < NUM_NODOS; i++){ wait(NULL); }
+        exit(0);
+    }
+    
+    // PROCESO PADRE (SIMULADOR DE CAOS): Inyecta los eventos aleatoriamente
+    else
+    {
+        srand(time(NULL) ^ getpid() << 16);
+        sleep(1); // Damos 1 segundo para levantar sockets
+        
+        printf("\n=======================================================\n");
+        printf(" [PADRE] INICIANDO SIMULACION P2P (RELOJES VECTORIALES)\n");
+        printf("=======================================================\n");
+
+        Mensaje_V inyeccion;
+        
+        for(int i = 0; i < NUM_EVENTO; i++) 
+        {
+            int indice_elegido = rand() % NUM_NODOS;
+            int puerto_elegido = 3000 + indice_elegido;
+            
+            memset(&inyeccion, 0, sizeof(Mensaje_V));
+            
+            // El Padre se identifica como "99".
+            // El memset previo asegura que su vector enviado es [0,0,0].
+            // Este proceso inyecta las instrucciones sin afectar los relojes
+            inyeccion.id_proceso = 99; 
+            if (rand() % 2 == 1) strcpy(inyeccion.peticion, CMD_EN); 
+            else strcpy(inyeccion.peticion, CMD_IN);
+            
+            printf("\n[PADRE] Ordenando a la computadora C%02d (Puerto %d) que actúe...\n", (indice_elegido + 1) * 5, puerto_elegido);
+                   
+            enviar_msj(puerto_elegido, inyeccion);
+            usleep(100000); // Ritmo al que se inyecta los eventos de envio o internos
+        }
+
+        printf("\n[PADRE] Simulación terminada. Esperando a que la red se estabilice...\n");
+        sleep(1); 
+
+        // APAGADO GLOBAL
+        printf("\n=======================================================\n");
+        printf(" [PADRE] INICIANDO PROTOCOLO DE APAGADO GLOBAL \n");
+        printf("=======================================================\n\n");
+
+        for(int i = 0; i < NUM_NODOS; i++) 
+        {
+            memset(&inyeccion, 0, sizeof(Mensaje_V));
+            inyeccion.id_proceso = 99; 
+            // Vector vacío garantizado por el memset
+            strcpy(inyeccion.peticion, CMD_EX); 
+            
+            printf("[PADRE] Enviando comando de apagado a puerto %d...\n", 3000 + i);
+            enviar_msj(3000 + i, inyeccion);
+            usleep(50000); 
+        }
+
+        wait(NULL); 
+        printf("\n[SISTEMA GLOBAL] Todos los nodos P2P han finalizado exitosamente.\n");
+        printf("----> Simulacion Terminada.\n");
+    }
+    return 0;
+}
+\end{lstlisting}
+
+\begin{itemize}
+    \item \textbf{Archivo de Cabecera (\texttt{vector.h})}
+\end{itemize}
+
+Este archivo es el pilar de la comunicación en la red, ya que define la estructura de datos que permite el rastreo de la causalidad. A diferencia del algoritmo de Lamport, donde se transmitía un único entero, aquí se define la estructura \texttt{Mensaje\_V}, la cual transporta el vector completo de relojes lógicos (\texttt{vector[NUM\_NODOS]}). 
+
+Además de la estructura, el archivo centraliza las constantes de la simulación, como el número de nodos y los comandos de control (\texttt{EXIT}, \texttt{ENVIAR}, \texttt{LOCAL}), asegurando que tanto el proceso padre como los nodos hijos utilicen los mismos protocolos de comunicación. Se incluye también la declaración de la función \texttt{imprimeV}, esencial para la depuración y visualización del estado interno de los vectores en la terminal.
+
+\begin{lstlisting}[style=estiloC]
+#ifndef VECTOR_H
+#define VECTOR_H
+
+#define NUM_NODOS 3    // Numero de computadoras a crear
+#define NUM_EVENTO 7   // Numero de eventos a realizarse en la red
+#define CMD_EX "EXIT"  // Comando de apagado global
+#define CMD_EN "ENVIAR" // Comando de inyección (Evento de Envio)
+#define CMD_IN "LOCAL"  // Comando de inyeccion (Evento interno)
+#define DIRECTION "127.0.0.1" // Direccion IP local
+
+// ------- Estructura del mensaje de vectores (Relojes Vectoriales) ------------
+// A diferencia de Lamport (escalar), aqui llevamos el registro de la causalidad 
+// de TODOS los procesos de la red.
+typedef struct {
+    int  id_proceso;             // ID del proceso que envia el mensaje
+    int  indice;                 // Posicion de este proceso dentro del vector
+    int  vector[NUM_NODOS];      // El mapa causal completo: [ C0, C1, C2 ]
+    char peticion[200];          // Texto del mensaje a enviar
+} Mensaje_V;
+
+// --------- Declaraciones de funciones ----------------
+int mayor(int a, int b);
+void conexion_p2p(Mensaje_V user, int dir[]);
+void enviar_msj(int puerto_destino, Mensaje_V datos);
+void imprimeV(int arr[]);
+
+#endif
+\end{lstlisting}
+
+\subsubsection{Archivo de Conexión P2P (\texttt{cnx\_vectores.c})}
+
+Este archivo constituye la implementación operativa del nodo bajo el esquema de relojes vectoriales. Al igual que en la práctica anterior, se aprovecha la característica de memoria aislada que proporciona \texttt{fork()} para que cada nodo gestione su propio vector lógico de manera independiente. El motor del sistema se divide en las siguientes funciones clave:
+
+\begin{itemize}
+    \item \textbf{Variables Globales y Estado:} Se definen estructuras para el estado local (\texttt{local}) y la recepción (\texttt{externo}), además de banderas de control (\texttt{encendido}, \texttt{enviar}) que permiten la comunicación entre los hilos de ejecución.
+    
+    \item \textbf{\texttt{enviar\_msj}:} Función encargada de la apertura de sockets TCP y la transmisión de la estructura \texttt{Mensaje\_V}. Es crucial notar que ahora se transmite el vector completo, permitiendo que el receptor obtenga el conocimiento global del emisor.
+    
+    \item \textbf{\texttt{hilo\_escucha} (Recepción Causal):} Representa el núcleo del algoritmo. Cuando el nodo recibe un mensaje de un vecino, ejecuta un ciclo \texttt{for} para actualizar cada posición de su vector local con el valor máximo encontrado entre su estado actual y el recibido:
+    \[ V_{local}[i] = \max(V_{local}[i], V_{externo}[i]) \quad \forall i \]
+    Tras esta sincronización, el nodo incrementa su propia posición en el vector para registrar el evento de recepción. Si el mensaje proviene del padre (\texttt{ID 99}), se interpretan los comandos de control sin alterar la causalidad global, a excepción de los eventos locales.
+
+    \item \textbf{\texttt{conexion\_p2p} (Motor del Nodo):} Orquesta la inicialización y el comportamiento de envío. Al encenderse, el nodo incrementa su posición en el vector como su primer evento interno. En el ciclo de envío, aplica la \textbf{regla de Fidge-Mattern}: incrementa su reloj local antes de difundir su vector a un nodo aleatorio de la red.
+    
+    \item \textbf{\texttt{imprimeV}:} Función utilitaria que permite visualizar en la terminal el estado de los relojes en formato de arreglo (\texttt{[ C0 C1 C2 ]}), facilitando la verificación de la concurrencia y el orden de los eventos durante la simulación.
+\end{itemize}
+
+\begin{lstlisting}[style=estiloC]
+// Fragmento critico de la actualizacion vectorial en el hilo_escucha
+else 
+{
+    // Aplicacion de la metrica de Fidge-Mattern
+    for (int i = 0; i < NUM_NODOS; i++) {
+        local.vector[i] = mayor(local.vector[i], externo.vector[i]);
+    }
+    // Incremento por evento de recepcion
+    local.vector[local.indice]++;
+}
+\end{lstlisting}
+
+\begin{lstlisting}[style=estiloC]
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+#include <pthread.h>
+#include <time.h>
+#include "vector.h"
+
+// Variables globales aisladas para cada proceso P2P gracias a fork()
+int PORT = 0;               // Puerto asignado a este nodo
+Mensaje_V local;            // Estructura que mantiene el vector y estado interno
+Mensaje_V externo;          // Buffer para recibir mensajes de la red
+int puertos[NUM_NODOS];     // Directorio de la red P2P (Agenda de vecinos)
+
+int encendido = 1;          // Bandera de ciclo de vida del hilo principal
+int enviar = 0;             // Bandera disparadora de eventos de envío
+
+// Función auxiliar para calcular el máximo entre dos números
+int mayor(int a, int b){return a > b ? a : b;}
+
+// Esta funcion se encargara de enviar un mensaje a un puerto en especifico
+void enviar_msj(int puerto_destino, Mensaje_V datos) {
+    int sock = 0;
+    struct sockaddr_in serv_addr;
+    // Creacion del socket tipo TCP para garantizar el envio y recepcion de mensaje
+    if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0) return;
+
+    serv_addr.sin_port = htons(puerto_destino);
+    serv_addr.sin_family = AF_INET;
+    inet_pton(AF_INET, DIRECTION, &serv_addr.sin_addr);
+
+    // Tratamos de conectarnos si no puede nos salimos del programa
+    if (connect(sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
+        perror("Error de conexion");
+        close(sock);
+        return;
+    }
+    // Enviamos el mensaje al conectarnos en el puerto definido
+    send(sock, &datos, sizeof(Mensaje_V), 0);
+    // Cerramos el socket ya que enviamos.
+    close(sock);
+}
+
+// Hilo Servidor: Se encarga exclusivamente de escuchar y reaccionar
+void *hilo_escucha(void *arg)
+{
+    int server_fd, new_socket;
+    struct sockaddr_in address;
+    int opt = 1;
+
+    server_fd = socket(AF_INET, SOCK_STREAM, 0);
+    setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = INADDR_ANY;
+    address.sin_port = htons(PORT);
+
+    bind(server_fd, (struct sockaddr *)&address, sizeof(address));
+    listen(server_fd, 3);
+
+    printf("[C%02d] Escuchando por el puerto %d...\n", local.id_proceso, puertos[local.indice]);
+
+    while (encendido)
+    {
+        int addrlen = sizeof(address);
+        new_socket = accept(server_fd, (struct sockaddr *)&address, (socklen_t *)&addrlen);
+
+        if (new_socket < 0) break;
+
+        memset(&externo, 0, sizeof(Mensaje_V));
+        read(new_socket, &externo, sizeof(Mensaje_V));
+
+        // 1. EVALUAR PRIMERO EL PLANO DE CONTROL (Ordenes del Padre)
+        if (externo.id_proceso == 99) 
+        {
+            if (strcmp(externo.peticion, CMD_EX) == 0) {
+                printf("\n[C%02d] Apagando por comando remoto...\n\n", local.id_proceso);
+                encendido = 0; 
+            }
+            else if(strcmp(externo.peticion, CMD_EN) == 0) {
+                enviar = 1; 
+            }
+            else if (strcmp(externo.peticion, CMD_IN) == 0) {
+                printf("\n[C%02d] -> EVENTO INTERNO <- Ejecutando tarea local...\n", local.id_proceso);
+                local.vector[local.indice]++; // Incrementamos antes de imprimir el log
+            }
+        }
+        // 2. EVALUAR EL PLANO DE DATOS (Red P2P Real)
+        else 
+        {
+            for (int i = 0; i < NUM_NODOS; i++) {
+                local.vector[i] = mayor(local.vector[i], externo.vector[i]);
+            }
+            local.vector[local.indice]++;
+        }
+
+        // 3. SE IMPRIME LO QUE SE RECIBE 
+        printf("\nInicio -> Evento en Computadora [C%02d] <-\n", local.id_proceso);
+        printf("--- ID del evento: %d --> %s\n", externo.id_proceso,(externo.id_proceso == 99) ? "PROCESO PADRE" : "NODO VECINO");
+        printf("--- Peticion recibida: %s\n", externo.peticion);
+        printf("--- Reloj Externo: "); imprimeV(externo.vector);
+        printf("--- Reloj Local:   "); imprimeV(local.vector);
+        printf("Fin -> Evento en Computadora [C%02d] <-\n", local.id_proceso);
+
+        close(new_socket);
+    }
+    close(server_fd);
+    return NULL;
+}
+
+// Hilo Principal: Motor del nodo P2P
+void conexion_p2p(Mensaje_V user, int dir[])
+{
+    pthread_t thread_id;
+    
+    // Inyección de configuración local (El genoma del nodo)
+    memcpy(&puertos, dir, sizeof(puertos));
+    PORT = dir[user.indice];
+    local.id_proceso = user.id_proceso;
+    local.indice = user.indice;
+    
+    // Todo vector inicia en [0,0,0]. El encendido del proceso cuenta como el Evento 1
+    local.vector[local.indice]++;
+    
+    // Desplegamos el "Oído" del nodo en un hilo concurrente
+    pthread_create(&thread_id, NULL, hilo_escucha, NULL);
+    
+    srand(time(NULL) ^ getpid());
+
+    while (encendido)
+    {
+        if (enviar == 1)
+        {
+            enviar = 0;
+            
+            // ALGORITMO DE FIDGE-MATTERN - REGLA DE ENVIO
+            // Todo evento local interno (como decidir enviar algo) avanza el reloj propio
+            local.vector[local.indice]++; 
+
+            // Decisión libre: El nodo decide aleatoriamente a quién contactar
+            int indice_new;
+            do {
+                indice_new = rand() % NUM_NODOS;
+            } while (indice_new == local.indice); // Evita hacerse ecos a sí mismo
+            
+            printf("\n[C%02d] Enviare mensaje a la computadora %02d con puerto %d...\n", 
+                   local.id_proceso, (indice_new + 1) * 5, puertos[indice_new]);
+                   
+            memset(local.peticion, 0, sizeof(local.peticion));
+            snprintf(local.peticion, sizeof(local.peticion), "Soy la computadora %02d", local.id_proceso);
+            
+            // Transmisión asíncrona del conocimiento causal
+            enviar_msj(puertos[indice_new], local);
+        }
+        usleep(50000); // Pequeña pausa para no saturar el CPU en el ciclo while
+    }
+    pthread_join(thread_id, NULL);
+}
+
+// Función auxiliar de formateo visual
+void imprimeV(int arr[])
+{
+    printf("[");
+    for (int i = 0; i < NUM_NODOS; i++) { printf(" %d ", arr[i]); }
+    printf("]\n");
+}
+\end{lstlisting}

@@ -1,3 +1,57 @@
+\subsection{Algoritmo de Sincronización de Cristian}
+
+\subsubsection{Lógica de Actualización de Relojes Físicos}
+
+El algoritmo de Cristian es un método probabilístico diseñado para sincronizar relojes físicos en sistemas distribuidos. Su premisa se basa en calcular el tiempo de tránsito de un mensaje por la red, asumiendo que el viaje de ida tarda aproximadamente lo mismo que el de vuelta (simetría en la red).
+
+Para lograr esta sincronización, el cliente registra el tiempo exacto en que envía una solicitud ($T_0$) y el tiempo en que recibe la respuesta ($T_1$). La diferencia entre ambos nos da el Tiempo de Ida y Vuelta o RTT (Round Trip Time):
+\[ RTT = T_1 - T_0 \]
+
+El servidor, al procesar la petición, inserta su propia estampa de tiempo oficial ($T_s$). Finalmente, el cliente ajusta su reloj local sumando al tiempo del servidor la mitad del RTT (que representa la latencia estimada de bajada):
+\[ \text{Hora Corregida} = T_s + \frac{RTT}{2} \]
+
+\textbf{Mecanismo de Precisión:} En el archivo \texttt{sinc\_cristian.c}, se implementó un umbral de tolerancia (\texttt{RTT\_MAX\_MS = 600}). Si el retardo supera este límite, significa que la red sufrió una congestión anómala, invalidando la asunción de simetría. En ese caso, el cliente descarta la estampa de tiempo y reintenta la operación.
+
+\subsubsection{Arquitectura del Sistema}
+
+La arquitectura abandona el esquema Peer-to-Peer (P2P) de los problemas anteriores para adoptar una estricta \textbf{topología en estrella} (Cliente-Servidor).
+\begin{itemize}
+    \item \textbf{Protocolo de Transporte:} La comunicación se realiza mediante datagramas \textbf{UDP}(\texttt{SOCK\_DGRAM}). Dado que se transmiten paquetes muy pequeños y sensibles a la latencia, UDP evita el costo temporal que implicaría establecer una conexión TCP.
+    \item \textbf{Jerarquía de Procesos:} El proceso Padre asume el rol ininterrumpido de Servidor Maestro. El proceso Hijo actúa como coordinador, lanzando a los procesos nietos (quienes fungirán como clientes independientes) y, al finalizar todos, inyecta el comando \texttt{EXIT} para apagar el servidor.
+\end{itemize}
+
+\subsubsection{Estructura de Datos (\texttt{header.h})}
+
+Para manipular el tiempo físico sin sufrir desbordamientos aritméticos, se abstrajo la hora en estructuras específicas:
+\begin{itemize}
+    \item \textbf{\texttt{tiempo}:} Fragmenta la hora local en horas, minutos, segundos y milisegundos, permitiendo una fácil lectura e impresión.
+    \item \textbf{\texttt{Mensaje\_C}:} Es la carga útil del datagrama UDP. A diferencia de las prácticas de relojes lógicos, aquí se transportan tres estampas de tiempo vitales ($T_0$, $T_s$, $T_1$) que viajarán entre el cliente y el servidor.
+\end{itemize}
+
+\begin{lstlisting}[style=estiloC]
+// ----- Estructura para almacenar el tiempo físico y visual -----
+typedef struct {
+    int horas;
+    int minutos;
+    int segundos;
+    int milisegundos;
+} tiempo;
+
+// ----- Estructura del mensaje de Cristian -----------
+typedef struct {
+    int  id_proceso;            
+    char peticion[200];         
+    tiempo tiempo_envio;      // T0: Estampa de tiempo al enviar
+    tiempo tiempo_servidor;   // Ts: Estampa oficial devuelta
+    tiempo tiempo_respuesta;  // T1: Estampa al recibir respuesta
+} Mensaje_C;
+\end{lstlisting}
+
+\subsubsection{Archivo Principal (\texttt{sinc\_cristian.c})}
+
+El núcleo matemático del archivo consiste en la función \texttt{capturar\_tiempo}, que extrae la hora real del sistema utilizando \texttt{CLOCK\_REALTIME}, y la función \texttt{convertion\_ms}, que transforma la estructura tridimensional de tiempo a un entero de 64 bits (\texttt{long long}). Esta conversión es obligatoria para poder realizar las restas y divisiones de la fórmula de Cristian a nivel de milisegundos sin pérdida de precisión.
+
+\begin{lstlisting}[style=estiloC]
 #include <stdio.h>        // printf, perror
 #include <stdlib.h>       // exit, rand, srand
 #include <string.h>       // memset, strcpy, strcmp
@@ -11,8 +65,8 @@
 // Variables globales para definir el limite en la respuesta
 // Y para el retardo maximo del servidor a la hora de enviar respuestas.
 #define RTT_MAX_MS  600         // 500 ms como límite razonable en loopback
-#define DELAY_SERV  300000      // Retardo máximo del servidor en µs
-#define DELAY_CLI   250000      // Retardo máximo del cliente en µs
+#define DELAY_SERV  300000      // Retardo maximo del servidor en us
+#define DELAY_CLI   250000      // Retardo maximo del cliente en us
 
 // Esta funcion imprime una estructura tiempo con formato H:M:S:ms
 void mostrar_hora(tiempo *t)
@@ -92,7 +146,7 @@ void ejecutar_servidor_C()
         else if (strcmp(msj.peticion, "ACTUALIZAR") == 0) // petición de sincronización
         {
             // El tiempo del servidor se captura al momento de recibir la peticion
-            capturar_tiempo(&msj.tiempo_servidor);   // ← Ts capturado primero
+            capturar_tiempo(&msj.tiempo_servidor);   //<- Ts capturado primero
 
             // Simulamos latencia de procesamiento
             usleep(rand() % DELAY_SERV);
@@ -170,7 +224,7 @@ void ejecutar_cliente_C(int indice)
 
     } while (rango > RTT_MAX_MS); // repite hasta obtener un rango aceptable
 
-    // FÓRMULA DE CRISTIAN -> si la respuesta entre el servidor y el cliente estan dentro del limite se corrige el reloj
+    // FORMULA DE CRISTIAN -> si la respuesta entre el servidor y el cliente estan dentro del limite se corrige el reloj
     // El reloj del servidor mas la diferencia de tiempo ida y vuelta del mensaje entre 2 (asumiendo simetria)
     // hora_corregida = Ts + (T1 - T0) / 2
     // La mitad del RTT aproxima el tiempo que tardó el mensaje en llegar desde el servidor hasta el cliente
@@ -266,3 +320,4 @@ int main()
         exit(0);            // el proceso hijo coordinador termina
     }
 }
+\end{lstlisting}

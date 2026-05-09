@@ -1,0 +1,83 @@
+Algoritmo Sincronizacion_Lamport
+Constantes y Estructuras (lamport_p2p.h)
+ Definir NUM_NODOS <- 3
+ Definir NUM_EVENT0 <- 7
+ Definir CMD_EX <- "EXIT"
+ Definir CMD_EN <- "ENVIAR"
+ Definir CMD_IN <- "LOCAL"
+ Definir DIRECTION <- "127.0.0.1"
+
+ Estructura Mensaje_L
+     id_proceso ∈ Z
+     indice ∈ Z
+     reloj ∈ Z
+     peticion ∈ Alfabeto[200]
+ FinEstructura
+
+Variables Globales
+ Definir instancia ∈ Mensaje_L
+ Definir directorio ∈ Z[NUM_NODOS]
+
+Procedimiento MAIN
+    pid <- fork()
+    Si pid < 0 Entonces
+        Salir(1)
+    Fin Si
+    Si pid = 0 Entonces                                     ▷ Proceso hijo creador de nodos P2P
+        Para i <- 0 hasta NUM_NODOS - 1 Hacer
+            directorio[i] <- 3000 + i
+        Fin Para
+        Para i <- 0 hasta NUM_NODOS - 1 Hacer
+            Si fork() = 0 Entonces                          ▷ Proceso nieto (Nodo P2P individual)
+                instancia.id_proceso <- 5 * (i + 1)
+                instancia.indice <- i
+                instancia.reloj <- 0
+                LimpiarMemoria(instancia.peticion)
+                conexion_p2p(instancia, directorio)
+                Salir(0)
+            Fin Si
+        Fin Para
+        Para i <- 0 hasta NUM_NODOS - 1 Hacer
+            EsperarHijo()
+        Fin Para
+        Salir(0)
+    Sino                                                    ▷ Proceso padre inyector de comandos
+        GenerarSemilla(TiempoActual() XOR (ObtenerPID() << 16))
+        DormirSegundos(1)
+        Escribir("=======================================================")
+        Escribir(" [PADRE] INICIANDO SIMULACION P2P (RELOJES DE LAMPORT) ")
+        Escribir("=======================================================")
+        Definir inyeccion ∈ Mensaje_L
+        Para i <- 0 hasta NUM_EVENT0 - 1 Hacer
+            indice_elegido <- Aleatorio() MOD NUM_NODOS
+            puerto_elegido <- 3000 + indice_elegido
+            LimpiarMemoria(inyeccion)
+            inyeccion.id_proceso <- 99
+            inyeccion.reloj <- 0                            ▷ El proceso padre no altera el tiempo
+            Si (Aleatorio() MOD 2) = 1 Entonces
+                CopiarCadena(inyeccion.peticion, CMD_EN)
+            Sino
+                CopiarCadena(inyeccion.peticion, CMD_IN)
+            Fin Si
+            Escribir("\n[PADRE] Ordenando a la computadora ", (indice_elegido + 1) * 5, " con el puerto ", puerto_elegido, " a realizar un evento...")
+            enviar_msj(puerto_elegido, inyeccion)
+            DormirMicrosegundos(100000)
+        Fin Para
+        Escribir("\n[PADRE] Simulación terminada. Esperando a que la red se estabilice...")
+        Escribir("\n=======================================================")
+        Escribir(" [PADRE] INICIANDO PROTOCOLO DE APAGADO GLOBAL ")
+        Escribir("=======================================================\n")
+        Para i <- 0 hasta NUM_NODOS - 1 Hacer
+            LimpiarMemoria(inyeccion)
+            inyeccion.id_proceso <- 99
+            inyeccion.reloj <- 0
+            CopiarCadena(inyeccion.peticion, CMD_EX)
+            Escribir("\n[PADRE] Enviando comando de apagado a puerto ", 3000 + i, "...")
+            enviar_msj(3000 + i, inyeccion)
+            DormirMicrosegundos(50000)
+        Fin Para
+        EsperarHijo()
+        Escribir("\n[SISTEMA GLOBAL] Todos los nodos P2P han finalizado exitosamente. Fin del programa.")
+    Fin Si
+    Salir 0
+Fin Procedimiento
